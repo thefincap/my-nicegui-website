@@ -1081,11 +1081,3 @@ ui.run(host='0.0.0.0', port=port, reload=False)
 # ... your app code ...
 
 port = int(os.environ.get('PORT', 10000))
-
-# Set max_page_size (in bytes) or configure socketio limits
-ui.run(
-    host='0.0.0.0', 
-    port=port, 
-    reload=False,
-    max_payload_size=10 * 1024 * 1024  # Increases max message size to 10MB
-)
