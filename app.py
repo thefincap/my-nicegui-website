@@ -918,8 +918,8 @@ def texsource_page():
                     ui.label('"Powering Circular Textiles"').classes('text-lg md:text-xl font-serif italic text-cyan-300')
                     ui.label('Strategic RM Sourcing & Distribution Network  ·  Polymer Value Chain  ·  Financial & Industrial Solar Advisory').classes('text-xs md:text-sm text-sky-100 font-medium mt-1')
                 
-                # TexSource Logo Display
-                ui.image('Texsource logo.jpeg').classes('w-28 md:w-36 h-auto rounded-lg shadow-md border-2 border-cyan-400/30 bg-white p-1')
+                # TexSourceLogo Display
+                ui.image('Texsourcelogo.jpeg').classes('w-28 md:w-36 h-auto rounded-lg shadow-md border-2 border-cyan-400/30 bg-white p-1')
 
         # ==========================================
         # VALUE PROPOSITION BANNER
@@ -981,7 +981,7 @@ def texsource_page():
                     
                     # TexSource
                     with ui.column().classes('items-center'):
-                        ui.image('Texsource logo.jpeg').classes('w-12 h-12 rounded-full border border-sky-300')
+                        ui.image('Texsourcelogo.jpeg').classes('w-12 h-12 rounded-full border border-sky-300')
                         ui.label('TexSource').classes('text-xs font-extrabold text-sky-900 mt-1')
 
             # Value Proposition Block
@@ -1078,3 +1078,14 @@ from nicegui import ui
 # Must bind host to '0.0.0.0' and read the PORT variable from environment
 port = int(os.environ.get('PORT', 10000))
 ui.run(host='0.0.0.0', port=port, reload=False)
+# ... your app code ...
+
+port = int(os.environ.get('PORT', 10000))
+
+# Set max_page_size (in bytes) or configure socketio limits
+ui.run(
+    host='0.0.0.0', 
+    port=port, 
+    reload=False,
+    max_payload_size=10 * 1024 * 1024  # Increases max message size to 10MB
+)
