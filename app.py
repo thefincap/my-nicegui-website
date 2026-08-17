@@ -1071,13 +1071,20 @@ def texsource_page():
 #  Run local web server
 ui.run(title='Praveen Portfolio', reload=True, port=8080)
 import os
-from nicegui import ui
+from nicegui import app, ui
 
-# ... your app code / page definitions ...
+# Serve files from current directory under /static
+app.add_static_files('/static', '.')
 
-# Must bind host to '0.0.0.0' and read the PORT variable from environment
+# ... your full UI code, components, and pages here ...
+
+# Get dynamic port from environment (Render) or default to 10000 (Local)
 port = int(os.environ.get('PORT', 10000))
-ui.run(host='0.0.0.0', port=port, reload=False)
-# ... your app code ...
 
-port = int(os.environ.get('PORT', 10000))
+ui.run(
+    host='0.0.0.0',
+    port=port,
+    reload=False,
+    title='Pro Fincap Services',
+    favicon='favicon.jpg'  # Replace with your actual small icon filename
+)

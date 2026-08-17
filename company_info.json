@@ -1,0 +1,14 @@
+{
+    "company_name": "Pro Fincap Services",
+    "domain": "thefincap.com",
+    "services": [
+        "Investment Teaser",
+        "Financial Planning",
+        "Consulting"
+    ],
+    "status": "Active",
+    "details": {
+        "port": 10000,
+        "ssl_enabled": true
+    }
+}
