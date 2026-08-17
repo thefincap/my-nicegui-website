@@ -1,7 +1,11 @@
-from nicegui import app, ui  # <-- Added 'app' import
+import os
+import re
 from contextlib import contextmanager
+from nicegui import app, ui
+
 # Serve current directory files under the '/static' route
 app.add_static_files('/static', '.')
+
 # --- SHARED LAYOUT FRAME (Header & Footer) ---
 @contextmanager
 def page_layout():
@@ -1069,8 +1073,8 @@ ui.run(title='Praveen Portfolio', reload=True, port=8080)
 import os
 from nicegui import ui
 
-# ... your app pages, layouts, and forms ...
+# ... your app code / page definitions ...
 
-# Set host to 0.0.0.0 and read the PORT dynamically from the environment
+# Must bind host to '0.0.0.0' and read the PORT variable from environment
 port = int(os.environ.get('PORT', 10000))
 ui.run(host='0.0.0.0', port=port, reload=False)
