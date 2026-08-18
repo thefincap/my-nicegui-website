@@ -5,20 +5,8 @@ from datetime import datetime
 from contextlib import contextmanager
 from nicegui import app, ui
 
-# FORCE STORAGE SECRET FOR LIVE SERVER (MUST BE AT THE TOP)
+# FORCE STORAGE SECRET FOR LIVE SERVER (Fixes 500 RuntimeError)
 app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
-
-# --- Helper Functions ---
-INQUIRIES_FILE = 'inquiries.json'
-
-def load_inquiries():
-    if os.path.exists(INQUIRIES_FILE):
-        try:
-            with open(INQUIRIES_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
 
 BLOGS_FILE = 'blogs.json'
 ADMIN_USER = 'admin'
@@ -42,6 +30,18 @@ def save_blogs(title, category, content):
     })
     with open(BLOGS_FILE, 'w') as f:
         json.dump(blogs, f, indent=2)
+
+INQUIRIES_FILE = 'inquiries.json'
+
+def load_inquiries():
+    if os.path.exists(INQUIRIES_FILE):
+        try:
+            with open(INQUIRIES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading {INQUIRIES_FILE}: {e}")
+            return []
+    return []
 
 # Serve current directory files under the '/static' route
 app.add_static_files('/static', '.')
@@ -1268,19 +1268,9 @@ def admin_inquiries_page():
             ]
 
             ui.table(columns=columns, rows=inquiries, row_key='date').classes('w-full shadow-md rounded-xl bg-white')
-#  Run local web server
-ui.run(title='Praveen Portfolio', reload=True, port=8080)
-import os
-from nicegui import app, ui
-
-# Serve files from current directory under /static
-app.add_static_files('/static', '.')
-
-# ... your full UI code, components, and pages here ...
-
-# Get dynamic port from environment (Render) or default to 10000 (Local)
-# Set port and secret
+# --- Server Execution ---
 port = int(os.environ.get('PORT', 10000))
+secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
@@ -1289,5 +1279,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         reload=False,
         title='Pro Fincap Services',
         favicon='favicon.jpg',
-        storage_secret=app.storage.secret,
+        storage_secret=secret,
     )
