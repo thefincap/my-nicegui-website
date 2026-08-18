@@ -1,9 +1,24 @@
-import json  # <-- Add this line at the top
+import json
 import os
 import re
 from datetime import datetime
 from contextlib import contextmanager
 from nicegui import app, ui
+
+# FORCE STORAGE SECRET FOR LIVE SERVER (MUST BE AT THE TOP)
+app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
+
+# --- Helper Functions ---
+INQUIRIES_FILE = 'inquiries.json'
+
+def load_inquiries():
+    if os.path.exists(INQUIRIES_FILE):
+        try:
+            with open(INQUIRIES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
 
 BLOGS_FILE = 'blogs.json'
 ADMIN_USER = 'admin'
@@ -27,17 +42,7 @@ def save_blogs(title, category, content):
     })
     with open(BLOGS_FILE, 'w') as f:
         json.dump(blogs, f, indent=2)
-INQUIRIES_FILE = 'inquiries.json'
 
-def load_inquiries():
-    if os.path.exists(INQUIRIES_FILE):
-        try:
-            with open(INQUIRIES_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading {INQUIRIES_FILE}: {e}")
-            return []
-    return []
 # Serve current directory files under the '/static' route
 app.add_static_files('/static', '.')
 
@@ -1276,9 +1281,7 @@ app.add_static_files('/static', '.')
 # Get dynamic port from environment (Render) or default to 10000 (Local)
 # Set port and secret
 port = int(os.environ.get('PORT', 10000))
-secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
-# Standalone run configuration
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
         host='0.0.0.0',
@@ -1286,5 +1289,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         reload=False,
         title='Pro Fincap Services',
         favicon='favicon.jpg',
-        storage_secret=secret,
+        storage_secret=app.storage.secret,
     )
