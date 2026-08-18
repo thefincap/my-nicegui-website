@@ -4,7 +4,24 @@ import re
 from datetime import datetime
 from contextlib import contextmanager
 from nicegui import app, ui
+# 1. Google Tag Manager - <head> Snippet (Shared across all pages)
+ui.add_head_html('''
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-5S4XH4');</script>
+    <!-- End Google Tag Manager -->
+''', shared=True)
 
+# 2. Google Tag Manager - <body> Snippet (Shared across all pages)
+ui.add_body_html('''
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5S4XH4"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+''', shared=True)
 # FORCE STORAGE SECRET FOR LIVE SERVER (Fixes 500 RuntimeError)
 app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
@@ -157,9 +174,21 @@ def page_layout():
         ui.label('© 2026 The Fincap Services. All rights reserved.').classes('text-xs text-slate-500 mt-2')
     pass
 # --- PAGE 1: HOME PAGE ---
-@ui.page('/')
+@ui.page('/', title='Pro Fincap Services | Best Financial Advisors in India')
 def home_page():
+    # Inject SEO meta tags into the page header
+    ui.add_head_html('''
+        <meta name="description" content="Pro Fincap Services provides business loans, home loans, and financial planning tailored to your growth.">
+        <meta name="keywords" content="financial services, business loan, home loan, fincap, loans India">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="Pro Fincap Services">
+        <meta property="og:description" content="Expert financial solutions for businesses and individuals.">
+        <meta property="og:type" content="website">
+    ''')
+
     with page_layout():
+        # ... Your existing home page layout code ...
+        ui.label('Welcome to Pro Fincap Services').classes('text-4xl font-bold')
         
         # --- HERO & INTRO BANNER ---
         with ui.card().classes('w-full p-8 bg-slate-800 text-white rounded-xl shadow-lg my-4'):
@@ -262,8 +291,17 @@ def home_page():
             ui.label('Vertical Architecture Diagram').classes('text-xl font-bold text-slate-800 mb-4')
             ui.element('img').props('src="/static/verticals.png"').classes('max-w-md w-full h-auto')
 # --- PAGE 2: Advance EMI Calculator PAGE ---
-@ui.page('/advance-emi-calculator')
-def advanceemicalculator_page():
+@ui.page('/calculator', title='Advance EMI Calculator | Calculate Loan Amortization')
+def calculator_page():
+    ui.add_head_html('''
+        <meta name="description" content="Use our free Advance EMI Calculator to estimate monthly installments, total interest, and amortization schedules for business or home loans.">
+        <meta name="keywords" content="EMI calculator, advance EMI calculator, loan repayment schedule, interest calculator, loan amortisation">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="Advance EMI Calculator | Pro Fincap">
+        <meta property="og:description" content="Accurately compute your monthly EMI, total payable interest, and repayment timeline.">
+        <meta property="og:type" content="website">
+    ''')
+    # ... rest of your EMI Calculator page code ...
     with page_layout():
         ui.label('My Projects').classes('text-3xl font-extrabold text-slate-800 mt-4 mb-4')
         
@@ -325,8 +363,18 @@ def advanceemicalculator_page():
 
                 # Run baseline calculation when page renders
                 calculate()
-@ui.page('/blogs')
-def public_blogs_page():
+# ... Blogs page ...
+@ui.page('/blogs', title='Financial Insights & Blog | Pro Fincap Services')
+def blogs_page():
+    ui.add_head_html('''
+        <meta name="description" content="Read expert financial insights, loan tips, working capital strategies, and business funding updates from Pro Fincap Services.">
+        <meta name="keywords" content="financial blog, business loan advice, funding tips, credit score improvement, corporate finance articles">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="Financial Insights & Articles | Pro Fincap Services">
+        <meta property="og:description" content="Stay updated with practical loan guides, market updates, and corporate finance advice.">
+        <meta property="og:type" content="website">
+    ''')
+    # ... rest of your Blogs page code ...
     with page_layout():  # Header and Footer
         with ui.column().classes('w-full max-w-4xl mx-auto my-8 pb-16 px-4'):
             
@@ -408,8 +456,17 @@ def public_blogs_page():
                         ui.markdown(item.get('content', '')).classes('text-slate-600 prose max-w-none')
 
 # --- PAGE 3: CONTACT FORM PAGE ---
-@ui.page('/contact')
+@ui.page('/contact', title='Contact Us | Get in Touch with Pro Fincap Services')
 def contact_page():
+    ui.add_head_html('''
+        <meta name="description" content="Get in touch with Pro Fincap Services for business loan inquiries, financial consultations, or partnership opportunities.">
+        <meta name="keywords" content="contact pro fincap, business loan inquiry, financial advisor consultation, fincap phone number">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="Contact Pro Fincap Services">
+        <meta property="og:description" content="Reach out to our experts today for customized financial solutions and loan assistance.">
+        <meta property="og:type" content="website">
+    ''')
+    # ... rest of your Contact page code ...
     with page_layout():
         with ui.column().classes('w-full max-w-2xl mx-auto my-8 pb-16 px-4'):
             ui.label('Contact Us').classes('text-3xl font-extrabold text-slate-800 mb-6')
@@ -481,8 +538,17 @@ def contact_page():
                 ui.button('Send Message', on_click=handle_submit).classes('w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg mt-2')
         # --- NEW PAGE: About Us ---
 # --- PAGE: ABOUT US ---
-@ui.page('/about-us')
-def about_us_page():
+@ui.page('/about', title='About Us | Pro Fincap Services - Financial Experts')
+def about_page():
+    ui.add_head_html('''
+        <meta name="description" content="Learn about Pro Fincap Services. We offer tailored financial consultancy, business financing, loan advisory, and wealth solutions across India.">
+        <meta name="keywords" content="about pro fincap, financial consultants India, loan advisors, corporate finance experts">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="About Us | Pro Fincap Services">
+        <meta property="og:description" content="Empowering businesses and individuals with strategic financial consulting and loan advisory.">
+        <meta property="og:type" content="website">
+    ''')
+    # ... rest of your About page code ...
     with page_layout():
         
         # --- HERO BANNER ---
@@ -594,8 +660,17 @@ def about_us_page():
                             ui.label(tag).classes('text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-md')
         # --- NEW PAGE: SERVICES ---
 # --- PAGE: OUR SERVICES ---
-@ui.page('/services')
+@ui.page('/services', title='Our Services | Business Loans, Working Capital & Financing')
 def services_page():
+    ui.add_head_html('''
+        <meta name="description" content="Explore financial services by Pro Fincap: Business Loans, Working Capital, Machinery Loans, LAP, Mortgage, and Project Financing.">
+        <meta name="keywords" content="business loans, working capital financing, loan against property, machinery loan, debt syndication">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="Financial & Loan Services | Pro Fincap">
+        <meta property="og:description" content="Tailored financing solutions including business loans, LAP, and working capital funds.">
+        <meta property="og:type" content="website">
+    ''')
+    # ... rest of your Services page code ...
     with page_layout():
         
         # --- HERO BANNER ---
@@ -810,8 +885,17 @@ def services_page():
                         ui.icon('hub', size='sm').classes('text-blue-600 mb-1')
                         ui.label(step).classes('font-bold text-xs text-slate-800')
 # --- NEW PAGE: INDUSTRIES ---
-@ui.page('/industries')
+@ui.page('/industries', title='Industries We Serve | Financial Solutions by Sector')
 def industries_page():
+    ui.add_head_html('''
+        <meta name="description" content="Pro Fincap provides customized funding and advisory for Manufacturing, Healthcare, Real Estate, IT, Logistics, and Retail sectors.">
+        <meta name="keywords" content="industry funding, manufacturing loans, healthcare financing, real estate project funding, IT business loans">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="Industry Sector Solutions | Pro Fincap Services">
+        <meta property="og:description" content="Customized capital advisory and loan solutions across key industrial and commercial sectors.">
+        <meta property="og:type" content="website">
+    ''')
+    # ... rest of your Industries page code ...
     with page_layout():
 
         # ==========================================
@@ -1050,8 +1134,17 @@ def industries_page():
                             ui.label('Distribution:').classes('text-base font-bold text-slate-900 mb-2')
                             ui.label('• SMWD Company will established supply chain & distribution in local and international market for supply of goods in a very efficient way to optimize the resources thus reduce the overall costs').classes('text-xs text-slate-600 leading-relaxed')
 # --- NEW PAGE: TEXSOURCE ---
-@ui.page('/texsource')
+@ui.page('/texsource', title='TexSource | Textile Industry Financing & Advisory')
 def texsource_page():
+    ui.add_head_html('''
+        <meta name="description" content="Specialized textile sector financing solutions by Pro Fincap. We support textile manufacturing, export credit, and equipment loans.">
+        <meta name="keywords" content="textile industry funding, textile machinery loans, export finance, TexSource financing">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="TexSource Textile Financing | Pro Fincap">
+        <meta property="og:description" content="Dedicated loan advisory and working capital solutions tailored for the textile manufacturing industry.">
+        <meta property="og:type" content="website">
+    ''')
+    # ... rest of your TexSource page code ...
     with page_layout():
 
         # ==========================================
