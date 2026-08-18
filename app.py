@@ -1274,8 +1274,11 @@ app.add_static_files('/static', '.')
 # ... your full UI code, components, and pages here ...
 
 # Get dynamic port from environment (Render) or default to 10000 (Local)
+# Set port and secret
 port = int(os.environ.get('PORT', 10000))
+secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
+# Standalone run configuration
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
         host='0.0.0.0',
@@ -1283,6 +1286,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         reload=False,
         title='Pro Fincap Services',
         favicon='favicon.jpg',
-        storage_secret='fincap_secure_secret_key_2026',
-        binding_refresh_interval=0.1
+        storage_secret=secret,
     )
