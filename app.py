@@ -3,16 +3,13 @@ import os
 import re
 from datetime import datetime
 from contextlib import contextmanager
-from fastapi.responses import HTMLResponse  # <--- Use HTMLResponse
 from nicegui import app, ui
 
-# Google Search Console Verification Endpoint
-@app.get('/google3f5c35b1acd4ab2.html', response_class=HTMLResponse)
-def google_verification():
-    return 'google-site-verification: google3f5c35b1acd4ab2.html'
-
-# 1. Google Tag Manager - <head> Snippet
+# 1. Google Site Verification & Google Tag Manager - <head> Snippet
 ui.add_head_html('''
+    <!-- Google Search Console Verification -->
+    <meta name="google-site-verification" content="YNYxOvn-UnnDJNUJMopa9GyjwO46ZLXs9IuNeVvUdcY" />
+
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
@@ -29,6 +26,7 @@ ui.add_body_html('''
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
 ''', shared=True)
+
 # FORCE STORAGE SECRET FOR LIVE SERVER (Fixes 500 RuntimeError)
 app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
