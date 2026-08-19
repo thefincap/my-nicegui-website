@@ -63,7 +63,18 @@ def sitemap():
     xml_content += '</urlset>'
     
     return Response(content=xml_content, media_type="application/xml")
-
+# ==============================================================================
+# ROBOTS.TXT ROUTE
+# ==============================================================================
+@app.get('/robots.txt')
+def robots():
+    content = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        "Sitemap: https://www.thefincap.com/sitemap.xml"
+    )
+    return Response(content=content, media_type="text/plain")
 
 # --- REST OF YOUR APP CODE BELOW ---
 BLOGS_FILE = 'blogs.json'
