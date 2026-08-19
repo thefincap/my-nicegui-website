@@ -3,13 +3,13 @@ import os
 import re
 from datetime import datetime
 from contextlib import contextmanager
-from fastapi.responses import PlainTextResponse  # <--- Added for Search Console verification
+from fastapi.responses import HTMLResponse  # <--- Use HTMLResponse
 from nicegui import app, ui
 
-# --- Google Search Console Verification Endpoint ---
-@app.get('/google3f5c35b1acd4ab2.html')
+# Google Search Console Verification Endpoint
+@app.get('/google3f5c35b1acd4ab2.html', response_class=HTMLResponse)
 def google_verification():
-    return PlainTextResponse('google-site-verification: google3f5c35b1acd4ab2.html')
+    return 'google-site-verification: google3f5c35b1acd4ab2.html'
 
 # 1. Google Tag Manager - <head> Snippet
 ui.add_head_html('''
