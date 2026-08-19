@@ -64,13 +64,16 @@ def sitemap():
     
     return Response(content=xml_content, media_type="application/xml")
 # ==============================================================================
-# ROBOTS.TXT ROUTE
+# COMBINED ROBOTS.TXT ROUTE
 # ==============================================================================
 @app.get('/robots.txt')
 def robots():
     content = (
         "User-agent: *\n"
         "Allow: /\n"
+        "Disallow: /admin-inquiries\n"      # Protects admin inquiries
+        "Disallow: /blogs/admin\n"          # Protects blog admin portal
+        "Disallow: /admin/\n"               # Blanket protection for sub-admin pages
         "\n"
         "Sitemap: https://www.thefincap.com/sitemap.xml"
     )
@@ -81,36 +84,73 @@ BLOGS_FILE = 'blogs.json'
 ADMIN_USER = 'admin'
 ADMIN_PASS = 'Fincap@2026'  # Change to your preferred password
 
+# ==============================================================================
+# BLOG HELPER FUNCTIONS (JSON FILE DATABASE)
+# ==============================================================================
+
 def load_blogs():
+    """Reads all blog posts from blogs.json safely."""
     if os.path.exists(BLOGS_FILE):
         try:
-            with open(BLOGS_FILE, 'r') as f:
+            with open(BLOGS_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception:
             return []
     return []
 
-def save_blogs(title, category, content):
-    blogs = load_blogs()
-    blogs.insert(0, {
-        "title": title,
-        "category": category,
-        "content": content
-    })
-    with open(BLOGS_FILE, 'w') as f:
-        json.dump(blogs, f, indent=2)
 
-INQUIRIES_FILE = 'inquiries.json'
+def save_blogs(title, category, content):
+    """Saves a new blog post to the top of blogs.json."""
+    blogs = load_blogs()
+    new_post = {
+        'title': title,
+        'category': category,
+        'content': content,
+        'date': datetime.now().strftime('%b %d, %Y')
+    }
+    blogs.insert(0, new_post)  # Insert at index 0 so newest post is first
+    with open(BLOGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(blogs, f, indent=4)
+
+
+def update_blog(index, title, category, content):
+    """Updates an existing blog post by its list position."""
+    blogs = load_blogs()
+    if 0 <= index < len(blogs):
+        blogs[index]['title'] = title
+        blogs[index]['category'] = category
+        blogs[index]['content'] = content
+        with open(BLOGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(blogs, f, indent=4)
+
+
+def delete_blog(index):
+    """Deletes a blog post by its list position."""
+    blogs = load_blogs()
+    if 0 <= index < len(blogs):
+        blogs.pop(index)
+        with open(BLOGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(blogs, f, indent=4)
+
+inquiries_FILE = 'inquiries.json'
 
 def load_inquiries():
-    if os.path.exists(INQUIRIES_FILE):
+    """Reads saved customer inquiries from inquiries.json."""
+    if os.path.exists(inquiries_FILE):
         try:
-            with open(INQUIRIES_FILE, 'r', encoding='utf-8') as f:
+            with open(inquiries_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except Exception as e:
-            print(f"Error loading {INQUIRIES_FILE}: {e}")
+        except Exception:
             return []
     return []
+
+def delete_enquiry(index):
+    """Deletes an enquiry by its list position."""
+    inquiries = load_inquiries()
+    if 0 <= index < len(inquiries):
+        inquiries.pop(index)
+        with open(inquiries_FILE, 'w', encoding='utf-8') as f:
+            json.dump(inquiries, f, indent=4)
 
 # Serve current directory files under the '/static' route
 app.add_static_files('/static', '.')
@@ -415,7 +455,9 @@ def calculator_page():
 
                 # Run baseline calculation when page renders
                 calculate()
-# ... Blogs page ...
+# ==============================================================================
+# 1. PUBLIC BLOGS PAGE (Visible to Everyone - Clean UI)
+# ==============================================================================
 @ui.page('/blogs', title='Financial Insights & Blog | Pro Fincap Services')
 def blogs_page():
     ui.add_head_html('''
@@ -426,72 +468,13 @@ def blogs_page():
         <meta property="og:description" content="Stay updated with practical loan guides, market updates, and corporate finance advice.">
         <meta property="og:type" content="website">
     ''')
-    # ... rest of your Blogs page code ...
+    
     with page_layout():  # Header and Footer
         with ui.column().classes('w-full max-w-4xl mx-auto my-8 pb-16 px-4'):
             
-            # --- HEADER ROW ---
+            # --- HEADER ---
             with ui.row().classes('w-full justify-between items-center mb-6'):
                 ui.label('Financial Insights & Guides').classes('text-3xl font-extrabold text-slate-800')
-                
-                authenticated = app.storage.user.get('authenticated', False)
-
-                if authenticated:
-                    def logout():
-                        app.storage.user['authenticated'] = False
-                        ui.notify('Logged out as Admin', color='info')
-                        ui.navigate.reload()
-                    ui.button('Logout Admin', on_click=logout).classes('bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg')
-                else:
-                    def toggle_login():
-                        app.storage.user['show_login_form'] = not app.storage.user.get('show_login_form', False)
-                        ui.navigate.reload()
-                    ui.button('Admin Login', on_click=toggle_login).classes('bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold py-1.5 px-3 rounded-lg')
-
-            # --- ADMIN SECTION ---
-            authenticated = app.storage.user.get('authenticated', False)
-            show_login = app.storage.user.get('show_login_form', False)
-
-            # 1. Login Form
-            if show_login and not authenticated:
-                with ui.card().classes('w-full p-6 mb-8 shadow-lg rounded-xl bg-slate-50 border border-slate-300 flex flex-col gap-3'):
-                    ui.label('Admin Login to Post Blogs').classes('text-lg font-bold text-slate-800')
-                    username_in = ui.input('Username').classes('w-full')
-                    password_in = ui.input('Password', password=True, password_toggle_button=True).classes('w-full')
-                    
-                    def handle_login():
-                        if username_in.value == ADMIN_USER and password_in.value == ADMIN_PASS:
-                            app.storage.user['authenticated'] = True
-                            app.storage.user['show_login_form'] = False
-                            ui.notify('Authenticated as Admin!', color='positive')
-                            ui.navigate.reload()
-                        else:
-                            ui.notify('Invalid Credentials', color='negative')
-                            
-                    ui.button('Login', on_click=handle_login).classes('bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg mt-2')
-
-            # 2. Article Publishing Form
-            if authenticated:
-                with ui.card().classes('w-full p-6 mb-8 shadow-lg rounded-xl bg-blue-50 border border-blue-200 flex flex-col gap-4'):
-                    ui.label('Publish New Article').classes('text-xl font-bold text-slate-800')
-                    title_in = ui.input('Blog Title').classes('w-full bg-white')
-                    category_in = ui.select(['Polymer & Textile Value Chain','Taxation', 'Finance', 'Loans', 'Insurance', 'Business'], label='Category').classes('w-full bg-white')
-                    content_in = ui.textarea('Blog Content (Markdown supported)').classes('w-full bg-white').props('rows=5')
-
-                    def publish():
-                        title = (title_in.value or '').strip()
-                        content = (content_in.value or '').strip()
-                        category = category_in.value or 'General'
-
-                        if not title or not content:
-                            ui.notify('Please enter both Title and Content!', color='warning')
-                            return
-
-                        save_blogs(title, category, content)
-                        ui.notify('Article published successfully!', color='positive')
-                        ui.navigate.reload()
-
-                    ui.button('Publish Article Live', on_click=publish).classes('bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg')
 
             # --- PUBLIC BLOG DISPLAY SECTION ---
             blogs = load_blogs()
@@ -506,6 +489,119 @@ def blogs_page():
                         ui.label(item.get('category', 'General')).classes('text-xs font-bold text-blue-600 uppercase tracking-wide mb-1')
                         ui.label(item.get('title', '')).classes('text-2xl font-bold text-slate-800 mb-3')
                         ui.markdown(item.get('content', '')).classes('text-slate-600 prose max-w-none')
+
+
+# ==============================================================================
+# HIDDEN ADMIN PAGE (With Create, Edit & Delete Capabilities)
+# ==============================================================================
+@ui.page('/blogs/admin', title='Admin Portal | Blog Management')
+def blog_admin_page():
+    authenticated = app.storage.user.get('authenticated', False)
+
+    with page_layout():
+        with ui.column().classes('w-full max-w-4xl mx-auto my-8 pb-16 px-4'):
+            
+            # --- IF NOT LOGGED IN: SHOW LOGIN FORM ---
+            if not authenticated:
+                with ui.card().classes('w-full max-w-md mx-auto p-6 shadow-lg rounded-xl bg-slate-50 border border-slate-300 flex flex-col gap-3'):
+                    ui.label('Admin Login').classes('text-2xl font-bold text-slate-800 text-center mb-2')
+                    username_in = ui.input('Username').classes('w-full')
+                    password_in = ui.input('Password', password=True, password_toggle_button=True).classes('w-full')
+                    
+                    def handle_login():
+                        if username_in.value == ADMIN_USER and password_in.value == ADMIN_PASS:
+                            app.storage.user['authenticated'] = True
+                            ui.notify('Authenticated as Admin!', color='positive')
+                            ui.navigate.reload()
+                        else:
+                            ui.notify('Invalid Credentials', color='negative')
+                            
+                    ui.button('Login', on_click=handle_login).classes('bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg mt-2 w-full')
+                return
+
+            # --- IF LOGGED IN: SHOW ADMIN DASHBOARD ---
+            with ui.row().classes('w-full justify-between items-center mb-6'):
+                ui.label('Blog Admin Portal').classes('text-3xl font-extrabold text-slate-800')
+                
+                def logout():
+                    app.storage.user['authenticated'] = False
+                    ui.notify('Logged out as Admin', color='info')
+                    ui.navigate.reload()
+                    
+                ui.button('Logout Admin', on_click=logout).classes('bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg')
+
+            # ------------------------------------------------------------------
+            # 1. PUBLISH NEW ARTICLE FORM
+            # ------------------------------------------------------------------
+            with ui.card().classes('w-full p-6 mb-8 shadow-lg rounded-xl bg-blue-50 border border-blue-200 flex flex-col gap-4'):
+                ui.label('Publish New Article').classes('text-xl font-bold text-slate-800')
+                title_in = ui.input('Blog Title').classes('w-full bg-white')
+                category_in = ui.select(['Polymer & Textile Value Chain', 'Taxation', 'Finance', 'Loans', 'Insurance', 'Business'], label='Category').classes('w-full bg-white')
+                content_in = ui.textarea('Blog Content (Markdown supported)').classes('w-full bg-white').props('rows=4')
+
+                def publish():
+                    title = (title_in.value or '').strip()
+                    content = (content_in.value or '').strip()
+                    category = category_in.value or 'General'
+
+                    if not title or not content:
+                        ui.notify('Please enter both Title and Content!', color='warning')
+                        return
+
+                    save_blogs(title, category, content)
+                    ui.notify('Article published successfully!', color='positive')
+                    ui.navigate.reload()
+
+                ui.button('Publish Article Live', on_click=publish).classes('bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg')
+
+            # ------------------------------------------------------------------
+            # 2. MANAGE EXISTING BLOGS (EDIT & DELETE)
+            # ------------------------------------------------------------------
+            ui.label('Manage Published Articles').classes('text-2xl font-bold text-slate-800 mb-4')
+            
+            blogs = load_blogs()
+            if not blogs:
+                ui.label('No blogs found to manage.').classes('text-slate-500')
+                return
+
+            with ui.column().classes('w-full space-y-4'):
+                for idx, item in enumerate(blogs):
+                    with ui.card().classes('w-full p-5 shadow-sm rounded-xl bg-white border border-slate-200'):
+                        with ui.row().classes('w-full justify-between items-start gap-4'):
+                            with ui.column().classes('flex-1 gap-1'):
+                                ui.label(item.get('category', 'General')).classes('text-xs font-bold text-blue-600 uppercase')
+                                ui.label(item.get('title', '')).classes('text-lg font-bold text-slate-800')
+                            
+                            # ACTION BUTTONS
+                            with ui.row().classes('gap-2'):
+                                # --- EDIT DIALOG FUNCTION ---
+                                def open_edit_dialog(index=idx, blog=item):
+                                    with ui.dialog() as dialog, ui.card().classes('w-full max-w-xl p-6 rounded-xl gap-4'):
+                                        ui.label('Edit Article').classes('text-xl font-bold text-slate-800')
+                                        edit_title = ui.input('Title', value=blog.get('title', '')).classes('w-full')
+                                        edit_cat = ui.select(['Polymer & Textile Value Chain', 'Taxation', 'Finance', 'Loans', 'Insurance', 'Business'], value=blog.get('category', 'General'), label='Category').classes('w-full')
+                                        edit_content = ui.textarea('Content', value=blog.get('content', '')).classes('w-full').props('rows=6')
+                                        
+                                        def save_changes():
+                                            update_blog(index, edit_title.value, edit_cat.value, edit_content.value)
+                                            ui.notify('Article updated!', color='positive')
+                                            dialog.close()
+                                            ui.navigate.reload()
+
+                                        with ui.row().classes('w-full justify-end gap-2'):
+                                            ui.button('Cancel', on_click=dialog.close).props('flat')
+                                            ui.button('Save Changes', on_click=save_changes, color='primary')
+                                    
+                                    dialog.open()
+
+                                # --- DELETE FUNCTION ---
+                                def confirm_delete(index=idx):
+                                    delete_blog(index)
+                                    ui.notify('Article deleted!', color='negative')
+                                    ui.navigate.reload()
+
+                                ui.button('Edit', on_click=open_edit_dialog, color='blue').props('outline icon=edit size=sm')
+                                ui.button('Delete', on_click=confirm_delete, color='red').props('outline icon=delete size=sm')
 
 # --- PAGE 3: CONTACT FORM PAGE ---
 @ui.page('/contact', title='Contact Us | Get in Touch with Pro Fincap Services')
@@ -1359,60 +1455,91 @@ def texsource_page():
                     
                     with ui.card().classes('w-full p-2 mt-4 bg-sky-600 text-white text-center rounded font-bold text-xs'):
                         ui.label('→ Rapier & Airjet Weaving')
-@ui.page('/admin-inquiries')
+# ==============================================================================
+# ADMIN inquiries PAGE
+# ==============================================================================
+@ui.page('/admin-inquiries', title='Admin inquiries | Pro Fincap')
 def admin_inquiries_page():
-    # Check if the user is logged in
+    # Block web crawlers from indexing
+    ui.add_head_html('<meta name="robots" content="noindex, nofollow">')
+    
     authenticated = app.storage.user.get('authenticated', False)
 
-    # 1. Show Login Screen if NOT authenticated
-    if not authenticated:
-        with ui.column().classes('w-full max-w-md mx-auto items-center justify-center my-16 px-4'):
-            with ui.card().classes('w-full p-6 shadow-xl rounded-xl bg-white border border-slate-200 flex flex-col gap-4'):
-                ui.label('Admin Access Required').classes('text-2xl font-bold text-slate-800 text-center')
-                
-                user_input = ui.input('Username').classes('w-full')
-                pass_input = ui.input('Password', password=True, password_toggle_button=True).classes('w-full')
-                
-                def try_login():
-                    if user_input.value == 'admin' and pass_input.value == 'Fincap@2026':
-                        app.storage.user['authenticated'] = True
-                        ui.notify('Login successful!', color='positive')
-                        ui.navigate.reload()
-                    else:
-                        ui.notify('Invalid username or password', color='negative')
-
-                ui.button('Log In', on_click=try_login).classes('w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg')
-        return
-
-    # 2. Display Inquiries Dashboard once LOGGED IN
     with page_layout():
         with ui.column().classes('w-full max-w-5xl mx-auto my-8 pb-16 px-4'):
+            
+            # ------------------------------------------------------------------
+            # 1. SHOW LOGIN FORM IF NOT AUTHENTICATED
+            # ------------------------------------------------------------------
+            if not authenticated:
+                with ui.card().classes('w-full max-w-md mx-auto p-6 shadow-lg rounded-xl bg-slate-50 border border-slate-300 flex flex-col gap-3'):
+                    ui.label('Admin Login Required').classes('text-2xl font-bold text-slate-800 text-center mb-2')
+                    username_in = ui.input('Username').classes('w-full')
+                    password_in = ui.input('Password', password=True, password_toggle_button=True).classes('w-full')
+                    
+                    def handle_login():
+                        if username_in.value == ADMIN_USER and password_in.value == ADMIN_PASS:
+                            app.storage.user['authenticated'] = True
+                            ui.notify('Logged in as Admin!', color='positive')
+                            ui.navigate.reload()
+                        else:
+                            ui.notify('Invalid Credentials', color='negative')
+                            
+                    ui.button('Login', on_click=handle_login).classes('bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg mt-2 w-full')
+                return
+
+            # ------------------------------------------------------------------
+            # 2. SHOW DASHBOARD HEADER WHEN LOGGED IN
+            # ------------------------------------------------------------------
             with ui.row().classes('w-full justify-between items-center mb-6'):
-                ui.label('Client Inquiries').classes('text-3xl font-extrabold text-slate-800')
+                ui.label('Client inquiries Dashboard').classes('text-3xl font-extrabold text-slate-800')
                 
                 def logout():
                     app.storage.user['authenticated'] = False
                     ui.notify('Logged out', color='info')
                     ui.navigate.reload()
-                
-                ui.button('Logout', on_click=logout).classes('bg-red-600 hover:bg-red-700 text-white text-sm font-bold py-2 px-4 rounded-lg')
+                    
+                ui.button('Logout', on_click=logout).classes('bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg')
 
+            # ------------------------------------------------------------------
+            # 3. DISPLAY inquiries LIST
+            # ------------------------------------------------------------------
             inquiries = load_inquiries()
 
             if not inquiries:
                 with ui.card().classes('w-full p-8 text-center bg-slate-50 border border-slate-200 rounded-xl'):
-                    ui.label('No inquiries found in inquiries.json').classes('text-slate-500 text-lg')
+                    ui.label('No customer inquiries found in inquiries.json').classes('text-slate-500 text-lg')
                 return
 
-            columns = [
-                {'name': 'date', 'label': 'Date & Time', 'field': 'date', 'align': 'left'},
-                {'name': 'name', 'label': 'Name', 'field': 'name', 'align': 'left'},
-                {'name': 'mobile', 'label': 'Mobile', 'field': 'mobile', 'align': 'left'},
-                {'name': 'email', 'label': 'Email', 'field': 'email', 'align': 'left'},
-                {'name': 'message', 'label': 'Message', 'field': 'message', 'align': 'left'},
-            ]
+            ui.label(f'Total Submissions: {len(inquiries)}').classes('text-sm font-semibold text-slate-500 mb-4')
 
-            ui.table(columns=columns, rows=inquiries, row_key='date').classes('w-full shadow-md rounded-xl bg-white')
+            with ui.column().classes('w-full space-y-4'):
+                for idx, item in enumerate(inquiries):
+                    with ui.card().classes('w-full p-5 shadow-sm rounded-xl bg-white border border-slate-200'):
+                        with ui.row().classes('w-full justify-between items-start gap-4 mb-2'):
+                            with ui.column().classes('gap-0'):
+                                ui.label(item.get('name', 'Unknown Name')).classes('text-lg font-bold text-slate-800')
+                                phone_val = item.get('phone') or item.get('mobile') or 'N/A'
+                                email_val = item.get('email', 'N/A')
+                                ui.label(f"Email: {email_val} | Phone: {phone_val}").classes('text-xs text-slate-500 font-medium')
+                            
+                            # DELETE BUTTON
+                            def remove_item(i=idx):
+                                delete_enquiry(i)
+                                ui.notify('Enquiry deleted successfully', color='negative')
+                                ui.navigate.reload()
+
+                            ui.button('Delete', on_click=remove_item, color='red').props('outline icon=delete size=sm')
+
+                        ui.separator()
+                        
+                        # MESSAGE / DETAILS
+                        msg_val = item.get('message') or item.get('details') or 'No message body provided.'
+                        ui.label('Message / Details:').classes('text-xs font-bold text-slate-400 mt-2')
+                        ui.label(msg_val).classes('text-slate-700 text-sm whitespace-pre-wrap')
+                        
+                        if 'date' in item:
+                            ui.label(f"Submitted on: {item.get('date')}").classes('text-xs text-slate-400 mt-2')
 # --- Server Execution ---
 port = int(os.environ.get('PORT', 10000))
 secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
