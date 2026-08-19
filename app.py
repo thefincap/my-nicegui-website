@@ -3,6 +3,7 @@ import os
 import re
 from datetime import datetime
 from contextlib import contextmanager
+from fastapi import Response  # <--- ADD THIS LINE HERE
 from nicegui import app, ui
 
 # 1. Google Site Verification & Google Tag Manager - <head> Snippet
@@ -30,6 +31,41 @@ ui.add_body_html('''
 # FORCE STORAGE SECRET FOR LIVE SERVER (Fixes 500 RuntimeError)
 app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
+# ==============================================================================
+# 2. PLACE SITEMAP ROUTE RIGHT HERE (AFTER STORAGE SECRET)
+# ==============================================================================
+@app.get('/sitemap.xml')
+def sitemap():
+    urls = [
+        '/',
+        '/about-us',
+        '/advance-emi-calculator',
+    ]
+    
+    if os.path.exists('blogs.json'):
+        try:
+            with open('blogs.json', 'r') as f:
+                blogs = json.load(f)
+                for blog in blogs:
+                    if 'slug' in blog:
+                        urls.append(f"/blog/{blog['slug']}")
+        except Exception:
+            pass
+
+    xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    for url in urls:
+        xml_content += '  <url>\n'
+        xml_content += f'    <loc>https://www.thefincap.com{url}</loc>\n'
+        xml_content += '    <changefreq>weekly</changefreq>\n'
+        xml_content += '    <priority>0.8</priority>\n'
+        xml_content += '  </url>\n'
+    xml_content += '</urlset>'
+    
+    return Response(content=xml_content, media_type="application/xml")
+
+
+# --- REST OF YOUR APP CODE BELOW ---
 BLOGS_FILE = 'blogs.json'
 ADMIN_USER = 'admin'
 ADMIN_PASS = 'Fincap@2026'  # Change to your preferred password
