@@ -291,7 +291,7 @@ def home_page():
             ui.label('Vertical Architecture Diagram').classes('text-xl font-bold text-slate-800 mb-4')
             ui.element('img').props('src="/static/verticals.png"').classes('max-w-md w-full h-auto')
 # --- PAGE 2: Advance EMI Calculator PAGE ---
-@ui.page('/calculator', title='Advance EMI Calculator | Calculate Loan Amortization')
+@ui.page('/advance-emi-calculator', title='Advance EMI Calculator | Calculate Loan Amortization')
 def calculator_page():
     ui.add_head_html('''
         <meta name="description" content="Use our free Advance EMI Calculator to estimate monthly installments, total interest, and amortization schedules for business or home loans.">
@@ -538,7 +538,7 @@ def contact_page():
                 ui.button('Send Message', on_click=handle_submit).classes('w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg mt-2')
         # --- NEW PAGE: About Us ---
 # --- PAGE: ABOUT US ---
-@ui.page('/about', title='About Us | Pro Fincap Services - Financial Experts')
+@ui.page('/about-us', title='About Us | Pro Fincap Services - Financial Experts')
 def about_page():
     ui.add_head_html('''
         <meta name="description" content="Learn about Pro Fincap Services. We offer tailored financial consultancy, business financing, loan advisory, and wealth solutions across India.">
