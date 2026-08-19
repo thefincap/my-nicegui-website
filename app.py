@@ -266,15 +266,15 @@ def page_layout():
         ui.label('© 2026 The Fincap Services. All rights reserved.').classes('text-xs text-slate-500 mt-2')
     pass
 # --- PAGE 1: HOME PAGE ---
-@ui.page('/', title='Pro Fincap Services | Best Financial Advisors in India')
+@ui.page('/', title='Pro Fincap Services | Best Corporate Financial Consultant in India')
 def home_page():
     # Inject SEO meta tags into the page header
     ui.add_head_html('''
-        <meta name="description" content="Pro Fincap Services provides business loans, home loans, and financial planning tailored to your growth.">
-        <meta name="keywords" content="financial services, business loan, home loan, fincap, loans India">
+        <meta name="description" content="Pro Fincap Services provides Private Equity, Debt Funding, and Trade Finance Solution for growth.">
+        <meta name="keywords" content="financial services, business loan, mergers & acquisition, fincap, loans India">
         <meta name="robots" content="index, follow">
         <meta property="og:title" content="Pro Fincap Services">
-        <meta property="og:description" content="Expert financial solutions for businesses and individuals.">
+        <meta property="og:description" content="Expert financial solutions for Corporates.">
         <meta property="og:type" content="website">
     ''')
 
@@ -456,13 +456,13 @@ def calculator_page():
                 # Run baseline calculation when page renders
                 calculate()
 # ==============================================================================
-# 1. PUBLIC BLOGS PAGE (Visible to Everyone - Clean UI)
+# 1. PUBLIC BLOGS PAGE (Visible to Everyone - Fixed Button Props)
 # ==============================================================================
-@ui.page('/blogs', title='Financial Insights & Blog | Pro Fincap Services')
-def blogs_page():
+@ui.page('/blogs', title='Polymer, Textile & Financial Market Insights')
+def blogs_page(id: str = None):
     ui.add_head_html('''
-        <meta name="description" content="Read expert financial insights, loan tips, working capital strategies, and business funding updates from Pro Fincap Services.">
-        <meta name="keywords" content="financial blog, business loan advice, funding tips, credit score improvement, corporate finance articles">
+        <meta name="description" content="Read expert financial insights, Polymer & Textile Value, PET Chips, Recycle Fiber, Polyester Yarn, PV Yarn, Spun Yarn, Open ended Yarn from Texsource.">
+        <meta name="keywords" content="financial blog, Strategic advice, funding solution, Current Textile market News, corporate finance articles">
         <meta name="robots" content="index, follow">
         <meta property="og:title" content="Financial Insights & Articles | Pro Fincap Services">
         <meta property="og:description" content="Stay updated with practical loan guides, market updates, and corporate finance advice.">
@@ -484,13 +484,57 @@ def blogs_page():
                 return
 
             with ui.column().classes('w-full space-y-6'):
-                for item in blogs:
-                    with ui.card().classes('w-full p-6 shadow-md rounded-xl bg-white border border-slate-200'):
+                for idx, item in enumerate(blogs):
+                    blog_id = str(item.get('id', idx))
+                    is_initially_expanded = (id == blog_id)
+
+                    with ui.card().classes('w-full p-6 shadow-md rounded-xl bg-white border border-slate-200 transition-all').props(f'id="card-{blog_id}"'):
+                        
+                        # Category Tag
                         ui.label(item.get('category', 'General')).classes('text-xs font-bold text-blue-600 uppercase tracking-wide mb-1')
-                        ui.label(item.get('title', '')).classes('text-2xl font-bold text-slate-800 mb-3')
-                        ui.markdown(item.get('content', '')).classes('text-slate-600 prose max-w-none')
+                        
+                        # Article Title
+                        ui.label(item.get('title', '')).classes('text-2xl font-bold text-slate-800 mb-2')
+                        
+                        # Collapsible Article Content
+                        hidden_class = '' if is_initially_expanded else 'hidden'
+                        content_container = ui.column().classes(f'w-full mt-2 pt-3 border-t border-slate-100 {hidden_class}')
+                        
+                        with content_container:
+                            ui.markdown(item.get('content', '')).classes('text-slate-600 prose max-w-none')
+                        
+                        # Read More / Show Less Button (Icon passed via .props)
+                        btn_label = "Show Less" if is_initially_expanded else "Read Full Article"
+                        btn_icon = "expand_less" if is_initially_expanded else "expand_more"
+                        
+                        btn = ui.button(btn_label).props(f'flat color=primary size=sm icon-right={btn_icon}').classes('mt-3 -ml-2')
 
+                        # Toggle visibility and push URL state
+                        def toggle_read_more(b_id=blog_id, container=content_container, button=btn):
+                            is_expanded = 'hidden' not in container.classes
+                            if is_expanded:
+                                container.classes(add='hidden')
+                                button.text = 'Read Full Article'
+                                button.props('icon-right=expand_more')
+                                ui.run_javascript('window.history.pushState({}, "", "/blogs");')
+                            else:
+                                container.classes(remove='hidden')
+                                button.text = 'Show Less'
+                                button.props('icon-right=expand_less')
+                                ui.run_javascript(f'window.history.pushState({{}}, "", "/blogs?id={b_id}");')
 
+                        btn.on_click(toggle_read_more)
+
+            # Auto-scroll directly to card if opened via direct shared link (/blogs?id=0)
+            if id:
+                ui.run_javascript(f'''
+                    setTimeout(() => {{
+                        const card = document.getElementById("card-{id}");
+                        if (card) {{
+                            card.scrollIntoView({{ behavior: "smooth", block: "center" }});
+                        }}
+                    }}, 300);
+                ''')
 # ==============================================================================
 # HIDDEN ADMIN PAGE (With Create, Edit & Delete Capabilities)
 # ==============================================================================
@@ -579,7 +623,7 @@ def blog_admin_page():
                                     with ui.dialog() as dialog, ui.card().classes('w-full max-w-xl p-6 rounded-xl gap-4'):
                                         ui.label('Edit Article').classes('text-xl font-bold text-slate-800')
                                         edit_title = ui.input('Title', value=blog.get('title', '')).classes('w-full')
-                                        edit_cat = ui.select(['Polymer & Textile Value Chain', 'Taxation', 'Finance', 'Loans', 'Insurance', 'Business'], value=blog.get('category', 'General'), label='Category').classes('w-full')
+                                        edit_cat = ui.select(['Polymer & Textile Value Chain', 'Taxation', 'Finance', 'CFO Services', 'ERP', 'Trade Finance'], value=blog.get('category', 'General'), label='Category').classes('w-full')
                                         edit_content = ui.textarea('Content', value=blog.get('content', '')).classes('w-full').props('rows=6')
                                         
                                         def save_changes():
@@ -806,9 +850,8 @@ def about_page():
                     with ui.row().classes('gap-2 flex-wrap pt-2'):
                         for tag in ['Project Financing', 'Private Equity', 'Financial Modeling', 'M&A Advisory', 'Commercial Syndication']:
                             ui.label(tag).classes('text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-md')
-        # --- NEW PAGE: SERVICES ---
 # --- PAGE: OUR SERVICES ---
-@ui.page('/services', title='Our Services | Business Loans, Working Capital & Financing')
+@ui.page('/services', title='Our Services | Private Equity, Debt Funding, Working Capital Financing')
 def services_page():
     ui.add_head_html('''
         <meta name="description" content="Explore financial services by Pro Fincap: Business Loans, Working Capital, Machinery Loans, LAP, Mortgage, and Project Financing.">
@@ -1033,10 +1076,10 @@ def services_page():
                         ui.icon('hub', size='sm').classes('text-blue-600 mb-1')
                         ui.label(step).classes('font-bold text-xs text-slate-800')
 # --- NEW PAGE: INDUSTRIES ---
-@ui.page('/industries', title='Industries We Serve | Financial Solutions by Sector')
+@ui.page('/industries', title='Industries We Serve | Renewable Solar, Real Estate, Polymer & Textile, Healthcare Sector')
 def industries_page():
     ui.add_head_html('''
-        <meta name="description" content="Pro Fincap provides customized funding and advisory for Manufacturing, Healthcare, Real Estate, IT, Logistics, and Retail sectors.">
+        <meta name="description" content="Pro Fincap provides customized funding and advisory for Manufacturing, Healthcare, Real Estate, Renewable, Polyester, Textile, and Financial sectors.">
         <meta name="keywords" content="industry funding, manufacturing loans, healthcare financing, real estate project funding, IT business loans">
         <meta name="robots" content="index, follow">
         <meta property="og:title" content="Industry Sector Solutions | Pro Fincap Services">
@@ -1209,20 +1252,20 @@ def industries_page():
 
                 # Gear Branding Center Flow
                 with ui.column().classes('lg:col-span-4 bg-slate-50 p-6 rounded-xl border border-slate-200 items-center justify-center text-center gap-4'):
-                    ui.label('Manufacturing & Branding Hub').classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
+                    ui.label('Manufacturing & Branding').classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
                     
                     with ui.card().classes('w-full p-4 bg-slate-800 text-white rounded-lg shadow'):
-                        ui.label('Garment Manufacturer').classes('font-bold text-sm')
+                        ui.label('Agency & Trading').classes('font-bold text-sm')
                     
                     ui.icon('autorenew', size='md').classes('text-sky-600 my-1')
 
                     with ui.card().classes('w-full p-4 bg-sky-800 text-white rounded-lg shadow'):
-                        ui.label('Create your own Brand & Logo').classes('font-bold text-sm')
+                        ui.label('Manufacturing & Private Label').classes('font-bold text-sm')
 
                     ui.icon('arrow_downward', size='sm').classes('text-slate-400 my-1')
 
                     with ui.card().classes('w-full p-4 bg-slate-700 text-white rounded-lg shadow'):
-                        ui.label('Uniforms').classes('font-bold text-sm')
+                        ui.label('Create your own Brand').classes('font-bold text-sm')
 
                 # Material Flow Blocks (Right)
                 with ui.column().classes('lg:col-span-4 gap-3'):
@@ -1230,7 +1273,8 @@ def industries_page():
                         'PET Resin & PET Scrap',
                         'Recycle Polyester Fiber & Virgin Fiber',
                         'Spun & OE Yarn, Knitted Yarn, PV blended &',
-                        '100% Poly, PV, Denim Fabric & Knitted Fabric'
+                        '100% Poly, PV, Denim Fabric & Knitted Fabric',
+                        'Garmenting : Clothing & Apparel'
                     ]
                     for mat in materials:
                         with ui.card().classes('w-full p-4 bg-sky-600 text-white rounded-lg shadow font-semibold text-xs flex items-center justify-center text-center'):
@@ -1282,14 +1326,14 @@ def industries_page():
                             ui.label('Distribution:').classes('text-base font-bold text-slate-900 mb-2')
                             ui.label('• SMWD Company will established supply chain & distribution in local and international market for supply of goods in a very efficient way to optimize the resources thus reduce the overall costs').classes('text-xs text-slate-600 leading-relaxed')
 # --- NEW PAGE: TEXSOURCE ---
-@ui.page('/texsource', title='TexSource | Textile Industry Financing & Advisory')
+@ui.page('/texsource', title='TexSource | Polymer & Textile Value Chain')
 def texsource_page():
     ui.add_head_html('''
-        <meta name="description" content="Specialized textile sector financing solutions by Pro Fincap. We support textile manufacturing, export credit, and equipment loans.">
-        <meta name="keywords" content="textile industry funding, textile machinery loans, export finance, TexSource financing">
+        <meta name="description" content="Specialized Polymer & Textile Value Chain Sourcing & Distribution Network. We support textile manufacturing, export credit, and equipment loans.">
+        <meta name="keywords" content="Polymer & Textile Value, PET Chips, Recycle Fiber, Polyester Yarn, PV Yarn, Spun Yarn, Open ended Yarn">
         <meta name="robots" content="index, follow">
-        <meta property="og:title" content="TexSource Textile Financing | Pro Fincap">
-        <meta property="og:description" content="Dedicated loan advisory and working capital solutions tailored for the textile manufacturing industry.">
+        <meta property="og:title" content="TexSource Polyester & Textile Sector | Pro Fincap">
+        <meta property="og:description" content="Polymer & Textile Value, PET Chips, Recycle Fiber, Polyester Yarn, PV Yarn, Spun Yarn, Open ended Yarn for the textile manufacturing industry.">
         <meta property="og:type" content="website">
     ''')
     # ... rest of your TexSource page code ...
