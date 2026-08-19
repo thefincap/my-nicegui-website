@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from contextlib import contextmanager
 from nicegui import app, ui
-# 1. Google Tag Manager - <head> Snippet (Shared across all pages)
+# 1. Google Tag Manager - <head> Snippet
 ui.add_head_html('''
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -15,7 +15,7 @@ ui.add_head_html('''
     <!-- End Google Tag Manager -->
 ''', shared=True)
 
-# 2. Google Tag Manager - <body> Snippet (Shared across all pages)
+# 2. Google Tag Manager - <body> Snippet
 ui.add_body_html('''
     <!-- Google Tag Manager (noscript) -->
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5S4XH4"
