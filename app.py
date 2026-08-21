@@ -456,17 +456,45 @@ def calculator_page():
                 # Run baseline calculation when page renders
                 calculate()
 # ==============================================================================
-# 1. PUBLIC BLOGS PAGE (Visible to Everyone - Fixed Button Props)
+# 1. PUBLIC BLOGS PAGE (Dynamic WhatsApp Preview Enabled)
 # ==============================================================================
-@ui.page('/blogs', title='Polymer, Textile & Financial Market Insights')
+@ui.page('/blogs')
 def blogs_page(id: str = None):
-    ui.add_head_html('''
-        <meta name="description" content="Read expert financial insights, Polymer & Textile Value, PET Chips, Recycle Fiber, Polyester Yarn, PV Yarn, Spun Yarn, Open ended Yarn from Texsource.">
+    blogs = load_blogs()
+    
+    # 1. DEFAULT META FALLBACKS (Used when viewing all blogs)
+    page_title = "Polymer, Textile & Financial Market Insights"
+    og_title = "Financial Insights & Articles | Pro Fincap Services"
+    og_desc = "Stay updated with practical loan guides, market updates, and corporate finance advice."
+
+    # 2. DYNAMIC META OVERRIDE (When sharing a specific blog link e.g. ?id=0)
+    if id is not None and blogs:
+        selected_blog = None
+        for idx, item in enumerate(blogs):
+            blog_id = str(item.get('id', idx))
+            if blog_id == str(id):
+                selected_blog = item
+                break
+        
+        if selected_blog:
+            page_title = f"{selected_blog.get('title', '')} | Pro Fincap"
+            og_title = selected_blog.get('title', og_title)
+            
+            # Extract summary or first 160 characters of content for 2-3 line preview
+            raw_text = selected_blog.get('summary') or selected_blog.get('content', '')
+            # Clean up markdown symbols (#, *) for neat plain-text snippet
+            clean_text = raw_text.replace('#', '').replace('*', '').strip()
+            og_desc = clean_text[:160] + ('...' if len(clean_text) > 160 else '')
+
+    # 3. INJECT DYNAMIC HEAD META TAGS FOR WHATSAPP CRAWLERS
+    ui.add_head_html(f'''
+        <title>{page_title}</title>
+        <meta name="description" content="{og_desc}">
         <meta name="keywords" content="financial blog, Strategic advice, funding solution, Current Textile market News, corporate finance articles">
         <meta name="robots" content="index, follow">
-        <meta property="og:title" content="Financial Insights & Articles | Pro Fincap Services">
-        <meta property="og:description" content="Stay updated with practical loan guides, market updates, and corporate finance advice.">
-        <meta property="og:type" content="website">
+        <meta property="og:title" content="{og_title}">
+        <meta property="og:description" content="{og_desc}">
+        <meta property="og:type" content="article">
     ''')
     
     with page_layout():  # Header and Footer
@@ -477,7 +505,6 @@ def blogs_page(id: str = None):
                 ui.label('Financial Insights & Guides').classes('text-3xl font-extrabold text-slate-800')
 
             # --- PUBLIC BLOG DISPLAY SECTION ---
-            blogs = load_blogs()
             if not blogs:
                 with ui.card().classes('w-full p-8 text-center bg-slate-50 border border-slate-200 rounded-xl'):
                     ui.label('No blog posts available yet. Check back soon!').classes('text-slate-500 text-lg')
@@ -503,7 +530,7 @@ def blogs_page(id: str = None):
                         with content_container:
                             ui.markdown(item.get('content', '')).classes('text-slate-600 prose max-w-none')
                         
-                        # Read More / Show Less Button (Icon passed via .props)
+                        # Read More / Show Less Button
                         btn_label = "Show Less" if is_initially_expanded else "Read Full Article"
                         btn_icon = "expand_less" if is_initially_expanded else "expand_more"
                         
