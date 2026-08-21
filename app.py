@@ -32,31 +32,38 @@ ui.add_body_html('''
 app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
 # ==============================================================================
-# 2. PLACE SITEMAP ROUTE RIGHT HERE (AFTER STORAGE SECRET)
+# SITEMAP ROUTE (Updated with exact 7 core static pages)
 # ==============================================================================
 @app.get('/sitemap.xml')
 def sitemap():
+    # 1. Your 7 core static pages
     urls = [
-        '/',
-        '/about-us',
-        '/advance-emi-calculator',
+        'https://thefincap.com/',
+        'https://thefincap.com/about-us',
+        'https://thefincap.com/services',
+        'https://thefincap.com/industries',
+        'https://thefincap.com/texsource',
+        'https://thefincap.com/contact',
+        'https://thefincap.com/blogs',
     ]
     
+    # 2. Dynamic blog posts from blogs.json
     if os.path.exists('blogs.json'):
         try:
-            with open('blogs.json', 'r') as f:
+            with open('blogs.json', 'r', encoding='utf-8') as f:
                 blogs = json.load(f)
-                for blog in blogs:
-                    if 'slug' in blog:
-                        urls.append(f"/blog/{blog['slug']}")
+                for idx, item in enumerate(blogs):
+                    blog_id = item.get('id') or item.get('slug') or str(idx)
+                    urls.append(f'https://thefincap.com/blogs?id={blog_id}')
         except Exception:
             pass
 
+    # 3. Construct XML response
     xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for url in urls:
         xml_content += '  <url>\n'
-        xml_content += f'    <loc>https://www.thefincap.com{url}</loc>\n'
+        xml_content += f'    <loc>{url}</loc>\n'
         xml_content += '    <changefreq>weekly</changefreq>\n'
         xml_content += '    <priority>0.8</priority>\n'
         xml_content += '  </url>\n'

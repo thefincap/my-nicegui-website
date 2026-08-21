@@ -1,0 +1,13 @@
+# ==============================================================================
+# ROBOTS.TXT ROUTE (SEO & Crawler Rules)
+# ==============================================================================
+@app.get('/robots.txt')
+def robots_txt():
+    content = """User-agent: *
+Allow: /
+Disallow: /admin-enquiries
+Disallow: /admin-inquiries
+
+Sitemap: https://thefincap.com/sitemap.xml
+"""
+    return Response(content=content, media_type="text/plain")
