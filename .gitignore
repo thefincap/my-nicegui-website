@@ -1,0 +1,5 @@
+blogs.json
+inquiries.json
+__pycache__/
+*.pyc
+.env
