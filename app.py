@@ -5,6 +5,15 @@ from datetime import datetime
 from contextlib import contextmanager
 from fastapi import Response  # <--- ADD THIS LINE HERE
 from nicegui import app, ui
+# ==============================================================================
+# 1. HELPER FUNCTIONS (Place slugify here)
+# ==============================================================================
+def slugify(text: str) -> str:
+    """Converts a string into an SEO-friendly URL slug."""
+    text = text.lower().strip()
+    text = re.sub(r'[^\w\s-]', '', text)  # Remove punctuation
+    text = re.sub(r'[\s_-]+', '-', text)  # Replace spaces/underscores with hyphens
+    return text.strip('-')
 
 # 1. Google Site Verification & Google Tag Manager - <head> Snippet
 ui.add_head_html('''
@@ -32,11 +41,10 @@ ui.add_body_html('''
 app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
 # ==============================================================================
-# SITEMAP ROUTE (Updated with exact 7 core static pages)
+# SITEMAP ROUTE (SEO Slugs Included)
 # ==============================================================================
 @app.get('/sitemap.xml')
 def sitemap():
-    # 1. Your 7 core static pages
     urls = [
         'https://thefincap.com/',
         'https://thefincap.com/about-us',
@@ -47,18 +55,16 @@ def sitemap():
         'https://thefincap.com/blogs',
     ]
     
-    # 2. Dynamic blog posts from blogs.json
     if os.path.exists('blogs.json'):
         try:
             with open('blogs.json', 'r', encoding='utf-8') as f:
                 blogs = json.load(f)
                 for idx, item in enumerate(blogs):
-                    blog_id = item.get('id') or item.get('slug') or str(idx)
-                    urls.append(f'https://thefincap.com/blogs?id={blog_id}')
+                    blog_slug = item.get('slug') or slugify(item.get('title', f'post-{idx}'))
+                    urls.append(f'https://thefincap.com/blogs?id={blog_slug}')
         except Exception:
             pass
 
-    # 3. Construct XML response
     xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for url in urls:
@@ -463,23 +469,23 @@ def calculator_page():
                 # Run baseline calculation when page renders
                 calculate()
 # ==============================================================================
-# 1. PUBLIC BLOGS PAGE (Dynamic WhatsApp Preview Enabled)
+# 1. PUBLIC BLOGS PAGE (SEO Slugs & Dynamic WhatsApp Previews)
 # ==============================================================================
 @ui.page('/blogs')
 def blogs_page(id: str = None):
     blogs = load_blogs()
     
-    # 1. DEFAULT META FALLBACKS (Used when viewing all blogs)
-    page_title = "Polymer, Textile & Financial Market Insights"
+    # Default fallback metadata for generic /blogs page
+    page_title = "Polymer, Textile & Financial Market Insights | Pro Fincap"
     og_title = "Financial Insights & Articles | Pro Fincap Services"
     og_desc = "Stay updated with practical loan guides, market updates, and corporate finance advice."
 
-    # 2. DYNAMIC META OVERRIDE (When sharing a specific blog link e.g. ?id=0)
+    # Dynamic Meta Override when opening a specific blog post link (?id=slug)
     if id is not None and blogs:
         selected_blog = None
         for idx, item in enumerate(blogs):
-            blog_id = str(item.get('id', idx))
-            if blog_id == str(id):
+            blog_slug = item.get('slug') or slugify(item.get('title', f'post-{idx}'))
+            if blog_slug == str(id):
                 selected_blog = item
                 break
         
@@ -487,13 +493,12 @@ def blogs_page(id: str = None):
             page_title = f"{selected_blog.get('title', '')} | Pro Fincap"
             og_title = selected_blog.get('title', og_title)
             
-            # Extract summary or first 160 characters of content for 2-3 line preview
+            # Extract text summary for 2-3 line WhatsApp snippet
             raw_text = selected_blog.get('summary') or selected_blog.get('content', '')
-            # Clean up markdown symbols (#, *) for neat plain-text snippet
             clean_text = raw_text.replace('#', '').replace('*', '').strip()
             og_desc = clean_text[:160] + ('...' if len(clean_text) > 160 else '')
 
-    # 3. INJECT DYNAMIC HEAD META TAGS FOR WHATSAPP CRAWLERS
+    # Inject Head Meta Tags dynamically
     ui.add_head_html(f'''
         <title>{page_title}</title>
         <meta name="description" content="{og_desc}">
@@ -504,33 +509,34 @@ def blogs_page(id: str = None):
         <meta property="og:type" content="article">
     ''')
     
-    with page_layout():  # Header and Footer
+    with page_layout():
         with ui.column().classes('w-full max-w-4xl mx-auto my-8 pb-16 px-4'):
             
-            # --- HEADER ---
+            # Header Title
             with ui.row().classes('w-full justify-between items-center mb-6'):
                 ui.label('Financial Insights & Guides').classes('text-3xl font-extrabold text-slate-800')
 
-            # --- PUBLIC BLOG DISPLAY SECTION ---
+            # Empty State
             if not blogs:
                 with ui.card().classes('w-full p-8 text-center bg-slate-50 border border-slate-200 rounded-xl'):
                     ui.label('No blog posts available yet. Check back soon!').classes('text-slate-500 text-lg')
                 return
 
+            # Blog Cards List
             with ui.column().classes('w-full space-y-6'):
                 for idx, item in enumerate(blogs):
-                    blog_id = str(item.get('id', idx))
-                    is_initially_expanded = (id == blog_id)
+                    blog_slug = item.get('slug') or slugify(item.get('title', f'post-{idx}'))
+                    is_initially_expanded = (id == blog_slug)
 
-                    with ui.card().classes('w-full p-6 shadow-md rounded-xl bg-white border border-slate-200 transition-all').props(f'id="card-{blog_id}"'):
+                    with ui.card().classes('w-full p-6 shadow-md rounded-xl bg-white border border-slate-200 transition-all').props(f'id="card-{blog_slug}"'):
                         
                         # Category Tag
                         ui.label(item.get('category', 'General')).classes('text-xs font-bold text-blue-600 uppercase tracking-wide mb-1')
                         
-                        # Article Title
+                        # Title
                         ui.label(item.get('title', '')).classes('text-2xl font-bold text-slate-800 mb-2')
                         
-                        # Collapsible Article Content
+                        # Collapsible Article Content Container
                         hidden_class = '' if is_initially_expanded else 'hidden'
                         content_container = ui.column().classes(f'w-full mt-2 pt-3 border-t border-slate-100 {hidden_class}')
                         
@@ -540,11 +546,10 @@ def blogs_page(id: str = None):
                         # Read More / Show Less Button
                         btn_label = "Show Less" if is_initially_expanded else "Read Full Article"
                         btn_icon = "expand_less" if is_initially_expanded else "expand_more"
-                        
                         btn = ui.button(btn_label).props(f'flat color=primary size=sm icon-right={btn_icon}').classes('mt-3 -ml-2')
 
-                        # Toggle visibility and push URL state
-                        def toggle_read_more(b_id=blog_id, container=content_container, button=btn):
+                        # Toggle expand and update URL bar without reload
+                        def toggle_read_more(slug=blog_slug, container=content_container, button=btn):
                             is_expanded = 'hidden' not in container.classes
                             if is_expanded:
                                 container.classes(add='hidden')
@@ -555,11 +560,11 @@ def blogs_page(id: str = None):
                                 container.classes(remove='hidden')
                                 button.text = 'Show Less'
                                 button.props('icon-right=expand_less')
-                                ui.run_javascript(f'window.history.pushState({{}}, "", "/blogs?id={b_id}");')
+                                ui.run_javascript(f'window.history.pushState({{}}, "", "/blogs?id={slug}");')
 
                         btn.on_click(toggle_read_more)
 
-            # Auto-scroll directly to card if opened via direct shared link (/blogs?id=0)
+            # Auto-scroll directly to card if opened via direct shared link
             if id:
                 ui.run_javascript(f'''
                     setTimeout(() => {{
