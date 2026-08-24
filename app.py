@@ -98,19 +98,29 @@ ADMIN_USER = 'admin'
 ADMIN_PASS = 'Fincap@2026'  # Change to your preferred password
 
 # ==============================================================================
+# ==============================================================================
 # BLOG HELPER FUNCTIONS (JSON FILE DATABASE)
 # ==============================================================================
+
+# Ensure Python looks in the exact directory where app.py lives
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BLOGS_FILE = os.path.join(BASE_DIR, 'blogs.json')
 
 def load_blogs():
     """Reads all blog posts from blogs.json safely."""
     if os.path.exists(BLOGS_FILE):
         try:
             with open(BLOGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
+                data = json.load(f)
+                print(f"Successfully loaded {len(data)} blogs.")
+                return data
+        except Exception as e:
+            # Print the exact error in Render logs instead of hiding it
+            print(f"CRITICAL ERROR loading blogs.json: {e}")
             return []
-    return []
-
+    else:
+        print(f"File not found: {BLOGS_FILE}")
+        return []
 
 def save_blogs(title, category, content):
     """Saves a new blog post to the top of blogs.json."""
