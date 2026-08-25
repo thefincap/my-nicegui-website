@@ -1,13 +1,25 @@
+import asyncio
+from contextlib import contextmanager
+from datetime import datetime, date  # Directly imports the class
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import json
 import os
+from pathlib import Path
 import re
-from datetime import datetime
-from contextlib import contextmanager
-from fastapi import Response  # <--- ADD THIS LINE HERE
+import smtplib
+
+from fastapi import Response
+import frontmatter  # <--- ADD THIS LINE HERE
 from nicegui import app, ui
+
+EMAIL_REGEX = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+PHONE_REGEX = r'^[0-9]{10}$'
+
 # ==============================================================================
-# 1. HELPER FUNCTIONS (Place slugify here)
+# 1. HELPER FUNCTIONS & ROUTINES
 # ==============================================================================
+
 def slugify(text: str) -> str:
     """Converts a string into an SEO-friendly URL slug."""
     text = text.lower().strip()
@@ -15,7 +27,104 @@ def slugify(text: str) -> str:
     text = re.sub(r'[\s_-]+', '-', text)  # Replace spaces/underscores with hyphens
     return text.strip('-')
 
-# 1. Google Site Verification & Google Tag Manager - <head> Snippet
+# --- INQUIRIES & SMTP HELPER FUNCTIONS ---
+INQUIRIES_FILE = 'inquiries.json'
+
+# SMTP Configuration (Environment variables with clean defaults)
+SMTP_SERVER = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'info@thefincap.com')
+SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD', '')  # App Password
+RECEIVER_EMAIL = os.environ.get('RECEIVER_EMAIL', 'info@thefincap.com')
+
+def load_inquiries() -> list:
+    """Reads saved customer inquiries from inquiries.json safely."""
+    if not os.path.exists(INQUIRIES_FILE):
+        return []
+    try:
+        with open(INQUIRIES_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[Error] Reading {INQUIRIES_FILE}: {e}")
+        return []
+
+def save_inquiry(name: str, email: str, phone: str, message: str, service: str = 'General') -> dict:
+    """Saves a new contact inquiry to inquiries.json and returns the created record."""
+    inquiries = load_inquiries()
+    new_entry = {
+        'name': name.strip(),
+        'email': email.strip(),
+        'phone': phone.strip(),
+        'service': service.strip(),
+        'message': message.strip(),
+        'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # <-- Fixed here
+    }
+    inquiries.insert(0, new_entry)
+    
+    try:
+        with open(INQUIRIES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(inquiries, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"[Error] Saving inquiry to {INQUIRIES_FILE}: {e}")
+
+    return new_entry
+
+def delete_enquiry(index: int) -> bool:
+    """Deletes an enquiry by its list position."""
+    inquiries = load_inquiries()
+    if 0 <= index < len(inquiries):
+        inquiries.pop(index)
+        try:
+            with open(INQUIRIES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(inquiries, f, indent=4, ensure_ascii=False)
+            return True
+        except Exception as e:
+            print(f"[Error] Updating {INQUIRIES_FILE} after deletion: {e}")
+            return False
+    return False
+
+def _send_email_sync(data: dict) -> bool:
+    """Synchronous internal worker for SMTP operations."""
+    if not SENDER_PASSWORD:
+        print("[SMTP Info] SENDER_PASSWORD not configured. Skipping email dispatch.")
+        return False
+        
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = SENDER_EMAIL
+        msg['To'] = RECEIVER_EMAIL
+        msg['Subject'] = f"New Inquiry from {data.get('name', 'Website Visitor')}"
+
+        body = f"""New Inquiry Received:
+
+Name: {data.get('name', 'N/A')}
+Email: {data.get('email', 'N/A')}
+Phone: {data.get('phone', 'N/A')}
+Service/Interest: {data.get('service', 'General')}
+Date: {data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}
+
+Message:
+{data.get('message', 'No message provided.')}
+"""
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"[Error] Email dispatch failed via SMTP: {e}")
+        return False
+
+async def send_email_notification(data: dict) -> bool:
+    """Asynchronous wrapper that prevents blocking NiceGUI event loop during email dispatch."""
+    return await asyncio.to_thread(_send_email_sync, data)
+# ==============================================================================
+# 2. SITE HEAD, BODY & APP STORAGE SETTINGS
+# ==============================================================================
+
+# Google Search Console Verification & GTM Head Snippet
 ui.add_head_html('''
     <!-- Google Search Console Verification -->
     <meta name="google-site-verification" content="YNYxOvn-UnnDJNUJMopa9GyjwO46ZLXs9IuNeVvUdcY" />
@@ -29,7 +138,7 @@ ui.add_head_html('''
     <!-- End Google Tag Manager -->
 ''', shared=True)
 
-# 2. Google Tag Manager - <body> Snippet
+# Google Tag Manager Body Snippet
 ui.add_body_html('''
     <!-- Google Tag Manager (noscript) -->
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5S4XH4"
@@ -37,12 +146,17 @@ ui.add_body_html('''
     <!-- End Google Tag Manager (noscript) -->
 ''', shared=True)
 
-# FORCE STORAGE SECRET FOR LIVE SERVER (Fixes 500 RuntimeError)
+# Secure storage secret for production
 app.storage.secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
 
 # ==============================================================================
-# SITEMAP ROUTE (SEO Slugs Included)
+# 3. FASTAPI ENDPOINTS (Healthcheck, Sitemap & Robots)
 # ==============================================================================
+
+@app.get('/health')
+def health():
+    return {'status': 'ok'}
+
 @app.get('/sitemap.xml')
 def sitemap():
     urls = [
@@ -76,121 +190,130 @@ def sitemap():
     xml_content += '</urlset>'
     
     return Response(content=xml_content, media_type="application/xml")
-# ==============================================================================
-# COMBINED ROBOTS.TXT ROUTE
-# ==============================================================================
+
 @app.get('/robots.txt')
 def robots():
     content = (
         "User-agent: *\n"
         "Allow: /\n"
-        "Disallow: /admin-inquiries\n"      # Protects admin inquiries
-        "Disallow: /blogs/admin\n"          # Protects blog admin portal
-        "Disallow: /admin/\n"               # Blanket protection for sub-admin pages
+        "Disallow: /admin-inquiries\n"
+        "Disallow: /blogs/admin\n"
+        "Disallow: /admin/\n"
         "\n"
         "Sitemap: https://www.thefincap.com/sitemap.xml"
     )
     return Response(content=content, media_type="text/plain")
 
-# --- REST OF YOUR APP CODE BELOW ---
-BLOGS_FILE = 'blogs.json'
+# ==============================================================================
+# 4. BLOG HELPER FUNCTIONS (MARKDOWN ENGINE)
+# ==============================================================================
+
 ADMIN_USER = 'admin'
-ADMIN_PASS = 'Fincap@2026'  # Change to your preferred password
+ADMIN_PASS = 'Fincap@2026'
 
-# ==============================================================================
-# ==============================================================================
-# BLOG HELPER FUNCTIONS (JSON FILE DATABASE)
-# ==============================================================================
-
-# Ensure Python looks in the exact directory where app.py lives
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BLOGS_FILE = os.path.join(BASE_DIR, 'blogs.json')
+POSTS_DIR = os.path.join(BASE_DIR, 'posts')
+
+# Automatically ensure the 'posts' directory exists
+os.makedirs(POSTS_DIR, exist_ok=True)
+
+import datetime  # Make sure 'import datetime' or 'from datetime import datetime, date' is at the top of app.py
 
 def load_blogs():
-    """Reads all blog posts from blogs.json safely."""
-    if os.path.exists(BLOGS_FILE):
-        try:
-            with open(BLOGS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                print(f"Successfully loaded {len(data)} blogs.")
-                return data
-        except Exception as e:
-            # Print the exact error in Render logs instead of hiding it
-            print(f"CRITICAL ERROR loading blogs.json: {e}")
-            return []
-    else:
-        print(f"File not found: {BLOGS_FILE}")
-        return []
+    """Reads all .md files, sorted by exact timestamp (newest first)."""
+    blogs = []
+    if not os.path.exists(POSTS_DIR):
+        return blogs
+
+    for filename in os.listdir(POSTS_DIR):
+        if filename.endswith('.md'):
+            filepath = os.path.join(POSTS_DIR, filename)
+            try:
+                post = frontmatter.load(filepath)
+                raw_date = post.get('date', '')
+
+                if isinstance(raw_date, (datetime.date, datetime.datetime)):
+                    date_str = raw_date.strftime('%Y-%m-%d %H:%M:%S')
+                elif isinstance(raw_date, str) and raw_date.strip():
+                    date_str = raw_date.strip()
+                else:
+                    date_str = '1970-01-01 00:00:00'
+
+                blogs.append({
+                    'title': post.get('title', 'Untitled'),
+                    'slug': filename.replace('.md', ''),
+                    'category': post.get('category', 'General'),
+                    'date': date_str,
+                    'display_date': date_str[:10],  # Keeps YYYY-MM-DD for clean UI rendering
+                    'summary': post.get('summary', ''),
+                    'content': post.content,
+                    'filename': filename
+                })
+            except Exception as e:
+                print(f"Error loading {filename}: {e}")
+
+    # Sort precisely by exact timestamp descending
+    blogs.sort(key=lambda x: x['date'], reverse=True)
+    return blogs
+
 
 def save_blogs(title, category, content):
-    """Saves a new blog post to the top of blogs.json."""
-    blogs = load_blogs()
-    new_post = {
-        'title': title,
-        'category': category,
-        'content': content,
-        'date': datetime.now().strftime('%b %d, %Y')
-    }
-    blogs.insert(0, new_post)  # Insert at index 0 so newest post is first
-    with open(BLOGS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(blogs, f, indent=4)
+    """Saves a new blog post with a full timestamp (down to the second)."""
+    slug = slugify(title)
+    filename = f"{slug}.md"
+    filepath = os.path.join(POSTS_DIR, filename)
+
+    post = frontmatter.Post(
+        content,
+        title=title,
+        category=category,
+        date=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    )
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        frontmatter.dump(post, f)
 
 
-def update_blog(index, title, category, content):
-    """Updates an existing blog post by its list position."""
-    blogs = load_blogs()
-    if 0 <= index < len(blogs):
-        blogs[index]['title'] = title
-        blogs[index]['category'] = category
-        blogs[index]['content'] = content
-        with open(BLOGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(blogs, f, indent=4)
+def update_blog(identifier, title, category, content):
+    """Updates an existing .md file while preserving its original publish timestamp."""
+    filename = identifier if str(identifier).endswith('.md') else f"{identifier}.md"
+    filepath = os.path.join(POSTS_DIR, filename)
+    
+    if os.path.exists(filepath):
+        existing = frontmatter.load(filepath)
+        original_date = existing.get('date', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
+        post = frontmatter.Post(
+            content,
+            title=title,
+            category=category,
+            date=original_date  # Keeps original creation time on edit
+        )
+        with open(filepath, 'w', encoding='utf-8') as f:
+            frontmatter.dump(post, f)
 
-def delete_blog(index):
-    """Deletes a blog post by its list position."""
-    blogs = load_blogs()
-    if 0 <= index < len(blogs):
-        blogs.pop(index)
-        with open(BLOGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(blogs, f, indent=4)
-
-inquiries_FILE = 'inquiries.json'
-
-def load_inquiries():
-    """Reads saved customer inquiries from inquiries.json."""
-    if os.path.exists(inquiries_FILE):
-        try:
-            with open(inquiries_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
-
-def delete_enquiry(index):
-    """Deletes an enquiry by its list position."""
-    inquiries = load_inquiries()
-    if 0 <= index < len(inquiries):
-        inquiries.pop(index)
-        with open(inquiries_FILE, 'w', encoding='utf-8') as f:
-            json.dump(inquiries, f, indent=4)
+def delete_blog(identifier):
+    """Deletes a .md file from the /posts directory."""
+    filename = identifier if str(identifier).endswith('.md') else f"{identifier}.md"
+    filepath = os.path.join(POSTS_DIR, filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
 
 # Serve current directory files under the '/static' route
 app.add_static_files('/static', '.')
 
-# --- SHARED LAYOUT FRAME (Header & Footer) ---
+# ==============================================================================
+# 5. SHARED LAYOUT FRAME (Header & Footer)
+# ==============================================================================
+
 @contextmanager
 def page_layout():
     # --- HEADER WITH DARK BLUE BACKGROUND ---
     with ui.header().classes('bg-slate-900 text-white p-4 row items-center justify-between'):
-        
-        # --- FIXED LOGO DISPLAY ---
-        # Using ui.element('img') keeps the native aspect ratio and respects h-10 w-auto
         with ui.row().classes('items-center gap-3'):
             ui.element('img').props('src="/static/logo.png"').classes('h-18 w-auto cursor-pointer') \
                 .on('click', lambda: ui.navigate.to('/'))
             
-          
         # --- NAVIGATION LINKS ---
         with ui.row().classes('items-center gap-4'):
             ui.link('Home', '/').classes('text-white no-underline hover:underline')
@@ -210,15 +333,13 @@ def page_layout():
     with ui.column().classes('w-full max-w-6xl mx-auto p-6 min-h-screen'):
         yield
       
-    # Standard HTML <footer> container that scrolls naturally
+    # Footer container
     with ui.element('footer').classes('bg-slate-900 text-slate-300 p-8 flex-col items-center gap-6 w-full mt-auto'):
-        
-        # 1. OFFICE ADDRESSES GRID (2 Columns on Desktop)
         with ui.row().classes('w-full max-w-5xl justify-between gap-8 text-sm'):
-            # 0. BRAND HEADER / COMPANY NAME (Top Left alignment above columns)
             with ui.row().classes('w-full max-w-5xl justify-start'):
                 ui.label('Pro Fincap Services LLP').classes('text-xl font-extrabold text-blue-400 tracking-wide mb-2')
-            # --- BHILWARA OFFICE ---
+            
+            # Bhilwara Office
             with ui.column().classes('flex-1 min-w-[280px] gap-2'):
                 with ui.row().classes('items-center gap-2 text-white font-bold text-base'):
                     ui.icon('location_on', size='sm').classes('text-blue-400')
@@ -237,7 +358,7 @@ def page_layout():
                     ui.icon('language', size='xs').classes('text-blue-400')
                     ui.link('www.thefincap.com', 'https://www.thefincap.com', new_tab=True).classes('text-slate-300 no-underline hover:text-white')
 
-            # --- UDAIPUR OFFICE ---
+            # Udaipur Office
             with ui.column().classes('flex-1 min-w-[280px] gap-2'):
                 with ui.row().classes('items-center gap-2 text-white font-bold text-base'):
                     ui.icon('location_on', size='sm').classes('text-blue-400')
@@ -249,13 +370,11 @@ def page_layout():
                     ui.icon('phone', size='xs').classes('text-blue-400')
                     ui.link('+91 9920218033', 'tel:+919920218033').classes('text-slate-300 no-underline hover:text-white')
 
-        # DIVIDER LINE
+        # Divider Line
         ui.element('div').classes('w-full max-w-5xl h-px bg-slate-800 my-2')
 
-        # 2. LOCATIONS BAR & SOCIAL MEDIA ICONS
+        # Locations & Social Icons
         with ui.row().classes('w-full max-w-5xl justify-between items-center flex-wrap gap-4'):
-            
-            # Global Presence Tagline
             with ui.row().classes('items-center gap-2 text-xs font-semibold text-slate-400 tracking-wider'):
                 ui.label('BHILWARA').classes('text-blue-400')
                 ui.label('|')
@@ -263,31 +382,16 @@ def page_layout():
                 ui.label('|')
                 ui.label('DUBAI').classes('text-blue-400')
 
-            # Social Media Icon Links
             with ui.row().classes('items-center gap-1'):
-                # Facebook
-                ui.button(icon='facebook', on_click=lambda: ui.navigate.to('https://www.facebook.com/thefincapservices/', new_tab=True)) \
-                    .props('flat round color=white size=sm').tooltip('Facebook')
-                
-                # Instagram (using photo icon)
-                ui.button(icon='photo_camera', on_click=lambda: ui.navigate.to('https://www.instagram.com/thefincapservices/', new_tab=True)) \
-                    .props('flat round color=white size=sm').tooltip('Instagram')
-                
-                # LinkedIn (using work/business icon)
-                ui.button(icon='business', on_click=lambda: ui.navigate.to('https://in.linkedin.com/company/the-fincap-services', new_tab=True)) \
-                    .props('flat round color=white size=sm').tooltip('LinkedIn')
-                
-                # YouTube
-                ui.button(icon='play_circle_filled', on_click=lambda: ui.navigate.to('https://www.youtube.com/channel/UCMZGsjiyrWANUWpOeBJXBdQ', new_tab=True)) \
-                    .props('flat round color=white size=sm').tooltip('YouTube')
-                
-                # WhatsApp (Direct Chat Link)
-                ui.button(icon='chat', on_click=lambda: ui.navigate.to('https://wa.me/918107299881', new_tab=True)) \
-                    .props('flat round color=green-5 size=sm').tooltip('WhatsApp')
+                ui.button(icon='facebook', on_click=lambda: ui.navigate.to('https://www.facebook.com/thefincapservices/', new_tab=True)).props('flat round color=white size=sm').tooltip('Facebook')
+                ui.button(icon='photo_camera', on_click=lambda: ui.navigate.to('https://www.instagram.com/thefincapservices/', new_tab=True)).props('flat round color=white size=sm').tooltip('Instagram')
+                ui.button(icon='business', on_click=lambda: ui.navigate.to('https://in.linkedin.com/company/the-fincap-services', new_tab=True)).props('flat round color=white size=sm').tooltip('LinkedIn')
+                ui.button(icon='play_circle_filled', on_click=lambda: ui.navigate.to('https://www.youtube.com/channel/UCMZGsjiyrWANUWpOeBJXBdQ', new_tab=True)).props('flat round color=white size=sm').tooltip('YouTube')
+                ui.button(icon='chat', on_click=lambda: ui.navigate.to('https://wa.me/918107299881', new_tab=True)).props('flat round color=green-5 size=sm').tooltip('WhatsApp')
 
-        # 3. COPYRIGHT
+        # Copyright
         ui.label('© 2026 The Fincap Services. All rights reserved.').classes('text-xs text-slate-500 mt-2')
-    pass
+
 # --- PAGE 1: HOME PAGE ---
 @ui.page('/', title='Pro Fincap Services | Best Corporate Financial Consultant in India')
 def home_page():
@@ -540,8 +644,11 @@ def blogs_page(id: str = None):
 
                     with ui.card().classes('w-full p-6 shadow-md rounded-xl bg-white border border-slate-200 transition-all').props(f'id="card-{blog_slug}"'):
                         
-                        # Category Tag
-                        ui.label(item.get('category', 'General')).classes('text-xs font-bold text-blue-600 uppercase tracking-wide mb-1')
+                        # Category Tag & Date
+                        with ui.row().classes('w-full justify-between items-center mb-1'):
+                            ui.label(item.get('category', 'General')).classes('text-xs font-bold text-blue-600 uppercase tracking-wide')
+                            if item.get('date'):
+                                ui.label(item.get('date')).classes('text-xs text-slate-400 font-medium')
                         
                         # Title
                         ui.label(item.get('title', '')).classes('text-2xl font-bold text-slate-800 mb-2')
@@ -584,8 +691,10 @@ def blogs_page(id: str = None):
                         }}
                     }}, 300);
                 ''')
+
+
 # ==============================================================================
-# HIDDEN ADMIN PAGE (With Create, Edit & Delete Capabilities)
+# 2. HIDDEN ADMIN PAGE (With Create, Edit & Delete Capabilities)
 # ==============================================================================
 @ui.page('/blogs/admin', title='Admin Portal | Blog Management')
 def blog_admin_page():
@@ -624,7 +733,7 @@ def blog_admin_page():
                 ui.button('Logout Admin', on_click=logout).classes('bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg')
 
             # ------------------------------------------------------------------
-            # 1. PUBLISH NEW ARTICLE FORM
+            # PUBLISH NEW ARTICLE FORM
             # ------------------------------------------------------------------
             with ui.card().classes('w-full p-6 mb-8 shadow-lg rounded-xl bg-blue-50 border border-blue-200 flex flex-col gap-4'):
                 ui.label('Publish New Article').classes('text-xl font-bold text-slate-800')
@@ -648,7 +757,7 @@ def blog_admin_page():
                 ui.button('Publish Article Live', on_click=publish).classes('bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg')
 
             # ------------------------------------------------------------------
-            # 2. MANAGE EXISTING BLOGS (EDIT & DELETE)
+            # MANAGE EXISTING BLOGS (EDIT & DELETE)
             # ------------------------------------------------------------------
             ui.label('Manage Published Articles').classes('text-2xl font-bold text-slate-800 mb-4')
             
@@ -658,25 +767,30 @@ def blog_admin_page():
                 return
 
             with ui.column().classes('w-full space-y-4'):
-                for idx, item in enumerate(blogs):
+                for item in blogs:
+                    # Target identifier (filename or slug)
+                    file_identifier = item.get('filename') or item.get('slug')
+
                     with ui.card().classes('w-full p-5 shadow-sm rounded-xl bg-white border border-slate-200'):
                         with ui.row().classes('w-full justify-between items-start gap-4'):
                             with ui.column().classes('flex-1 gap-1'):
                                 ui.label(item.get('category', 'General')).classes('text-xs font-bold text-blue-600 uppercase')
                                 ui.label(item.get('title', '')).classes('text-lg font-bold text-slate-800')
+                                if item.get('date'):
+                                    ui.label(f"Date: {item.get('date')}").classes('text-xs text-slate-400')
                             
                             # ACTION BUTTONS
                             with ui.row().classes('gap-2'):
                                 # --- EDIT DIALOG FUNCTION ---
-                                def open_edit_dialog(index=idx, blog=item):
+                                def open_edit_dialog(target=file_identifier, blog=item):
                                     with ui.dialog() as dialog, ui.card().classes('w-full max-w-xl p-6 rounded-xl gap-4'):
                                         ui.label('Edit Article').classes('text-xl font-bold text-slate-800')
                                         edit_title = ui.input('Title', value=blog.get('title', '')).classes('w-full')
-                                        edit_cat = ui.select(['Polymer & Textile Value Chain', 'Taxation', 'Finance', 'CFO Services', 'ERP', 'Trade Finance'], value=blog.get('category', 'General'), label='Category').classes('w-full')
+                                        edit_cat = ui.select(['Polymer & Textile Value Chain', 'Taxation', 'Finance', 'Loans', 'Insurance', 'Business'], value=blog.get('category', 'General'), label='Category').classes('w-full')
                                         edit_content = ui.textarea('Content', value=blog.get('content', '')).classes('w-full').props('rows=6')
                                         
                                         def save_changes():
-                                            update_blog(index, edit_title.value, edit_cat.value, edit_content.value)
+                                            update_blog(target, edit_title.value, edit_cat.value, edit_content.value)
                                             ui.notify('Article updated!', color='positive')
                                             dialog.close()
                                             ui.navigate.reload()
@@ -688,14 +802,13 @@ def blog_admin_page():
                                     dialog.open()
 
                                 # --- DELETE FUNCTION ---
-                                def confirm_delete(index=idx):
-                                    delete_blog(index)
+                                def confirm_delete(target=file_identifier):
+                                    delete_blog(target)
                                     ui.notify('Article deleted!', color='negative')
                                     ui.navigate.reload()
 
                                 ui.button('Edit', on_click=open_edit_dialog, color='blue').props('outline icon=edit size=sm')
                                 ui.button('Delete', on_click=confirm_delete, color='red').props('outline icon=delete size=sm')
-
 # --- PAGE 3: CONTACT FORM PAGE ---
 @ui.page('/contact', title='Contact Us | Get in Touch with Pro Fincap Services')
 def contact_page():
@@ -1549,100 +1662,197 @@ def texsource_page():
                     with ui.card().classes('w-full p-2 mt-4 bg-sky-600 text-white text-center rounded font-bold text-xs'):
                         ui.label('→ Rapier & Airjet Weaving')
 # ==============================================================================
-# ADMIN inquiries PAGE
+# PUBLIC CONTACT PAGE (Saves to inquiries.json + Triggers SMTP Email)
 # ==============================================================================
-@ui.page('/admin-inquiries', title='Admin inquiries | Pro Fincap')
-def admin_inquiries_page():
-    # Block web crawlers from indexing
-    ui.add_head_html('<meta name="robots" content="noindex, nofollow">')
+# --- PAGE 3: CONTACT FORM PAGE ---
+@ui.page('/contact', title='Contact Us | Get in Touch with Pro Fincap Services')
+def contact_page():
+    ui.add_head_html('''
+        <meta name="description" content="Get in touch with Pro Fincap Services for business loan inquiries, financial consultations, or partnership opportunities.">
+        <meta name="keywords" content="contact pro fincap, business loan inquiry, financial advisor consultation, fincap phone number">
+        <meta name="robots" content="index, follow">
+        <meta property="og:title" content="Contact Pro Fincap Services">
+        <meta property="og:description" content="Reach out to our experts today for customized financial solutions and loan assistance.">
+        <meta property="og:type" content="website">
+    ''')
     
+    with page_layout():
+        ui.label('Contact Our Advisory Team').classes('text-3xl font-extrabold text-slate-800 my-4')
+
+        with ui.row().classes('w-full gap-8 items-start mb-8 flex-col md:flex-row'):
+            
+            # Left Column: Office Info
+            with ui.card().classes('flex-1 p-6 bg-slate-900 text-white rounded-xl shadow-md w-full'):
+                ui.label('Get in Touch').classes('text-xl font-bold text-blue-400 mb-4')
+                
+                ui.label('Bhilwara Office').classes('font-bold text-base text-white mt-2')
+                ui.label('34, Ground Floor, New Cloth Market, Pur Road, Bhilwara, PIN-311001 (Raj)').classes('text-slate-300 text-sm mb-2')
+                ui.label('Phone: +91 8107299881').classes('text-slate-300 text-sm')
+                ui.label('Email: info@thefincap.com').classes('text-slate-300 text-sm mb-4')
+
+                ui.element('div').classes('w-full h-px bg-slate-800 my-4')
+
+                ui.label('Udaipur Office').classes('font-bold text-base text-white mt-2')
+                ui.label('Plot No. 5, First Floor, Mayank Colony, Near SBI, 100 feet road Shobhagpura, Near Zudio Chouraha, Udaipur, Rajasthan - 313001').classes('text-slate-300 text-sm mb-2')
+                ui.label('Phone: +91 9920218033').classes('text-slate-300 text-sm')
+
+            # Right Column: Inquiry Form
+            with ui.card().classes('flex-1 p-6 bg-white border border-slate-200 rounded-xl shadow-md w-full'):
+                ui.label('Send Us a Message').classes('text-xl font-bold text-slate-800 mb-4')
+                
+                name_input = ui.input('Full Name *').classes('w-full mb-2')
+                email_input = ui.input('Email Address *').classes('w-full mb-2')
+                phone_input = ui.input('Phone Number (10 Digits Mandatory) *').classes('w-full mb-2').props('maxlength=10')
+                message_input = ui.textarea('Message / Requirements *').classes('w-full mb-4').props('rows=4')
+
+                async def handle_submit():
+                    name = (name_input.value or '').strip()
+                    email = (email_input.value or '').strip()
+                    phone = (phone_input.value or '').strip()
+                    message = (message_input.value or '').strip()
+
+                    # Field Validations
+                    if not name:
+                        ui.notify('Please enter your full name.', type='warning')
+                        return
+                    if not email or not re.match(EMAIL_REGEX, email):
+                        ui.notify('Please provide a valid email address.', type='warning')
+                        return
+                    if not phone or not re.match(PHONE_REGEX, phone):
+                        ui.notify('Please enter a valid 10-digit mobile number.', type='warning')
+                        return
+                    if not message or len(message) < 5:
+                        ui.notify('Please provide a message explaining your requirements.', type='warning')
+                        return
+
+                    # 1. Save entry locally
+                    entry = save_inquiry(name, email, phone, message)
+
+                    # 2. Show success notification immediately
+                    ui.notify(f'Thank you {name}! Your message has been sent successfully.', type='positive')
+
+                    # 3. Clear inputs
+                    name_input.value = ''
+                    email_input.value = ''
+                    phone_input.value = ''
+                    message_input.value = ''
+
+                    # 4. Dispatch Email in background
+                    await send_email_notification(entry)
+
+                ui.button('Submit Inquiry', icon='send', on_click=handle_submit).props('color=primary').classes('w-full')
+# ==============================================================================
+# ADMIN INQUIRIES PAGE
+# ==============================================================================
+@ui.page('/admin-inquiries', title='Admin Portal | Inquiries')
+def admin_inquiries_page():
+    # 1. AUTHENTICATION GUARD
     authenticated = app.storage.user.get('authenticated', False)
 
     with page_layout():
         with ui.column().classes('w-full max-w-5xl mx-auto my-8 pb-16 px-4'):
             
-            # ------------------------------------------------------------------
-            # 1. SHOW LOGIN FORM IF NOT AUTHENTICATED
-            # ------------------------------------------------------------------
+            # --- LOGIN SCREEN (Shown if NOT authenticated) ---
             if not authenticated:
-                with ui.card().classes('w-full max-w-md mx-auto p-6 shadow-lg rounded-xl bg-slate-50 border border-slate-300 flex flex-col gap-3'):
-                    ui.label('Admin Login Required').classes('text-2xl font-bold text-slate-800 text-center mb-2')
+                with ui.card().classes('w-full max-w-md mx-auto p-6 shadow-lg rounded-xl bg-slate-50 border border-slate-300 flex flex-col gap-3 my-12'):
+                    ui.label('Admin Login').classes('text-2xl font-bold text-slate-800 text-center mb-2')
                     username_in = ui.input('Username').classes('w-full')
                     password_in = ui.input('Password', password=True, password_toggle_button=True).classes('w-full')
                     
                     def handle_login():
-                        if username_in.value == ADMIN_USER and password_in.value == ADMIN_PASS:
+                        # Replace with your actual ADMIN credentials or variables
+                        if username_in.value == os.environ.get('ADMIN_USER', 'admin') and password_in.value == os.environ.get('ADMIN_PASS', 'admin123'):
                             app.storage.user['authenticated'] = True
-                            ui.notify('Logged in as Admin!', color='positive')
+                            ui.notify('Authenticated as Admin!', color='positive')
                             ui.navigate.reload()
                         else:
                             ui.notify('Invalid Credentials', color='negative')
                             
                     ui.button('Login', on_click=handle_login).classes('bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg mt-2 w-full')
+                
+                # CRITICAL: Return immediately so nothing below this executes if unauthenticated
                 return
 
-            # ------------------------------------------------------------------
-            # 2. SHOW DASHBOARD HEADER WHEN LOGGED IN
-            # ------------------------------------------------------------------
+            # --- AUTHENTICATED DASHBOARD CONTENT ---
             with ui.row().classes('w-full justify-between items-center mb-6'):
-                ui.label('Client inquiries Dashboard').classes('text-3xl font-extrabold text-slate-800')
+                ui.label('Customer Inquiries Dashboard').classes('text-3xl font-extrabold text-slate-800')
                 
-                def logout():
+                def handle_logout():
                     app.storage.user['authenticated'] = False
-                    ui.notify('Logged out', color='info')
+                    ui.notify('Logged out successfully', color='info')
                     ui.navigate.reload()
-                    
-                ui.button('Logout', on_click=logout).classes('bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg')
 
-            # ------------------------------------------------------------------
-            # 3. DISPLAY inquiries LIST
-            # ------------------------------------------------------------------
+                ui.button('Logout', icon='logout', on_click=handle_logout).props('outline color=negative').classes('rounded-lg')
+
             inquiries = load_inquiries()
 
             if not inquiries:
                 with ui.card().classes('w-full p-8 text-center bg-slate-50 border border-slate-200 rounded-xl'):
-                    ui.label('No customer inquiries found in inquiries.json').classes('text-slate-500 text-lg')
+                    ui.icon('inbox', size='48px').classes('text-slate-400 mx-auto mb-2')
+                    ui.label('No inquiries submitted yet.').classes('text-slate-500 font-medium text-lg')
                 return
 
-            ui.label(f'Total Submissions: {len(inquiries)}').classes('text-sm font-semibold text-slate-500 mb-4')
+            # Render Inquiries List
+            inquiry_container = ui.column().classes('w-full space-y-4')
 
-            with ui.column().classes('w-full space-y-4'):
-                for idx, item in enumerate(inquiries):
-                    with ui.card().classes('w-full p-5 shadow-sm rounded-xl bg-white border border-slate-200'):
-                        with ui.row().classes('w-full justify-between items-start gap-4 mb-2'):
-                            with ui.column().classes('gap-0'):
-                                ui.label(item.get('name', 'Unknown Name')).classes('text-lg font-bold text-slate-800')
-                                phone_val = item.get('phone') or item.get('mobile') or 'N/A'
-                                email_val = item.get('email', 'N/A')
-                                ui.label(f"Email: {email_val} | Phone: {phone_val}").classes('text-xs text-slate-500 font-medium')
-                            
-                            # DELETE BUTTON
-                            def remove_item(i=idx):
-                                delete_enquiry(i)
-                                ui.notify('Enquiry deleted successfully', color='negative')
-                                ui.navigate.reload()
+            def refresh_inquiries():
+                inquiry_container.clear()
+                current_inquiries = load_inquiries()
+                
+                if not current_inquiries:
+                    with inquiry_container:
+                        ui.label('No inquiries remaining.').classes('text-slate-500 my-4')
+                    return
 
-                            ui.button('Delete', on_click=remove_item, color='red').props('outline icon=delete size=sm')
+                with inquiry_container:
+                    for idx, item in enumerate(current_inquiries):
+                        with ui.card().classes('w-full p-5 shadow-sm rounded-xl bg-white border border-slate-200 hover:shadow-md transition-shadow'):
+                            with ui.row().classes('w-full justify-between items-start gap-4'):
+                                
+                                # Customer Info
+                                with ui.column().classes('flex-1 gap-1'):
+                                    ui.label(item.get('name', 'N/A')).classes('text-lg font-bold text-slate-800')
+                                    with ui.row().classes('gap-4 text-xs text-slate-500'):
+                                        ui.label(f"📧 {item.get('email', 'N/A')}")
+                                        ui.label(f"📞 {item.get('phone', 'N/A')}")
+                                        ui.label(f"📅 {item.get('timestamp', 'N/A')}")
+                                    
+                                    if item.get('service'):
+                                        ui.label(f"Service: {item.get('service')}").classes('text-xs text-blue-600 font-semibold mt-1')
 
-                        ui.separator()
-                        
-                        # MESSAGE / DETAILS
-                        msg_val = item.get('message') or item.get('details') or 'No message body provided.'
-                        ui.label('Message / Details:').classes('text-xs font-bold text-slate-400 mt-2')
-                        ui.label(msg_val).classes('text-slate-700 text-sm whitespace-pre-wrap')
-                        
-                        if 'date' in item:
-                            ui.label(f"Submitted on: {item.get('date')}").classes('text-xs text-slate-400 mt-2')
-# --- Server Execution ---
-port = int(os.environ.get('PORT', 10000))
-secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
+                                    ui.label(item.get('message', '')).classes('text-sm text-slate-700 mt-2 bg-slate-50 p-3 rounded-lg w-full whitespace-pre-line border border-slate-100')
+
+                                # Delete Button
+                                def make_delete_handler(index_to_delete):
+                                    def confirm_and_delete():
+                                        if delete_enquiry(index_to_delete):
+                                            ui.notify('Inquiry deleted successfully', type='positive')
+                                            refresh_inquiries()
+                                        else:
+                                            ui.notify('Failed to delete inquiry', type='negative')
+                                    return confirm_and_delete
+
+                                ui.button(
+                                    icon='delete', 
+                                    on_click=make_delete_handler(idx)
+                                ).props('flat round color=negative').tooltip('Delete Inquiry')
+
+            # Initial render of the inquiries list
+            refresh_inquiries()
+# ==============================================================================
+# SERVER EXECUTION (Place at the absolute bottom of app.py)
+# ==============================================================================
 
 if __name__ in {"__main__", "__mp_main__"}:
+    # Fetch environment variables inside the main execution block
+    port = int(os.environ.get('PORT', 10000))
+    secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
+
     ui.run(
         host='0.0.0.0',
         port=port,
         reload=False,
         title='Pro Fincap Services',
-        favicon='favicon.jpg',
+        favicon='favicon.ico',
         storage_secret=secret,
     )
