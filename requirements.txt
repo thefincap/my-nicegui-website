@@ -1,1 +1,4 @@
 nicegui
+python-frontmatter
+uvicorn
+fastapi
