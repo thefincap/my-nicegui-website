@@ -1844,16 +1844,17 @@ def admin_inquiries_page():
 # ==============================================================================
 
 if __name__ in {"__main__", "__mp_main__"}:
-    # Fetch environment variables inside the main execution block
     port = int(os.environ.get('PORT', 10000))
     secret = os.environ.get('STORAGE_SECRET', 'fincap_secure_secret_key_2026')
+
+    favicon_file = 'favicon.ico' if os.path.exists('favicon.ico') else None
 
     ui.run(
         host='0.0.0.0',
         port=port,
         reload=False,
         title='Pro Fincap Services',
-        favicon='favicon.ico',
+        favicon=favicon_file,
         storage_secret=secret,
     )
     

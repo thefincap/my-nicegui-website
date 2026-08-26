@@ -1,3 +1,15 @@
+# Python bytecode & cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Local database / user dynamic data (Stops Render from restoring old inquiries)
+inquiries.json
+
+# Temporary framework files
+.nicegui/
+
+# Environment variables & local secrets
 .env
+.env.*
