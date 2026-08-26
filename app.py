@@ -1856,5 +1856,4 @@ if __name__ in {"__main__", "__mp_main__"}:
         title='Pro Fincap Services',
         favicon=favicon_file,
         storage_secret=secret,
-    )
-    
+    )    
